@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_effects_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="10dp"
+    android:background="@drawable/widget_bg_rounded">
+
+    <TextView
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:gravity="center"
+        android:text="FX"
+        android:textColor="#FF4ADE80"
+        android:textSize="14sp"
+        android:fontFamily="sans-serif-black" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingStart="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="EFFECTS"
+            android:textColor="#66FFFFFF"
+            android:textSize="8sp"
+            android:letterSpacing="0.2" />
+
+        <TextView
+            android:id="@+id/widget_effect_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Leaves"
+            android:textColor="#FFFFFFFF"
+            android:textSize="13sp"
+            android:fontFamily="sans-serif-medium" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/widget_effect_toggle_btn"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@drawable/ic_shuffle"
+        android:background="@drawable/widget_play_btn_bg"
+        android:tint="#FF4ADE80"
+        android:scaleType="fitCenter"
+        android:padding="6dp" />
+
+</LinearLayout>

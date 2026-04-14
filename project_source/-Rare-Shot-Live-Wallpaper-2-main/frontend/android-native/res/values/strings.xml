@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rare Shot Live Wallpaper</string>
+    <string name="widget_music_label">Rare Shot Music</string>
+    <string name="widget_photo_label">Rare Shot Wallpaper</string>
+    <string name="widget_effects_label">Rare Shot Effects</string>
+</resources>

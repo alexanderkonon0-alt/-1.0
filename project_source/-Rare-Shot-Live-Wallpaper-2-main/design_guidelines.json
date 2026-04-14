@@ -1,0 +1,184 @@
+{
+  "project_name": "Rare Shot Live Wallpaper",
+  "app_type": "mobile_application",
+  "platform": "React Native Expo (Android)",
+  "design_philosophy": {
+    "core_theme": "Dark Nature Glassmorphism",
+    "emotional_tone": "Serene, Immersive, Mystical, Premium",
+    "visual_style": "Deep forest greens, bioluminescent accents, frosted glass overlays, organic motion",
+    "key_principles": [
+      "Immersion First: UI should never block the wallpaper. It floats.",
+      "Glass Reality: Use blur and transparency to mimic physical glass.",
+      "Organic Motion: Interactions should feel fluid (water/wind), not mechanical.",
+      "Deep Contrast: Text must be legible against dynamic backgrounds using shadows/overlays."
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Playfair Display",
+      "body": "Manrope",
+      "monospace": "Space Mono"
+    },
+    "scale": {
+      "display": { "fontSize": 48, "lineHeight": 56, "letterSpacing": -1, "fontWeight": "700" },
+      "h1": { "fontSize": 32, "lineHeight": 40, "letterSpacing": -0.5, "fontWeight": "600" },
+      "h2": { "fontSize": 24, "lineHeight": 32, "letterSpacing": 0, "fontWeight": "600" },
+      "body_lg": { "fontSize": 18, "lineHeight": 28, "letterSpacing": 0.5, "fontWeight": "400" },
+      "body_md": { "fontSize": 16, "lineHeight": 24, "letterSpacing": 0.5, "fontWeight": "400" },
+      "caption": { "fontSize": 12, "lineHeight": 16, "letterSpacing": 1, "fontWeight": "500", "textTransform": "uppercase" }
+    },
+    "implementation_notes": "Use expo-font to load these. Fallback to System fonts if necessary."
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "main": "#052E16",
+        "light": "#15803D",
+        "dark": "#020604",
+        "accent": "#4ADE80"
+      },
+      "glass": {
+        "background": "rgba(20, 50, 40, 0.4)",
+        "border": "rgba(255, 255, 255, 0.15)",
+        "highlight": "rgba(255, 255, 255, 0.1)"
+      },
+      "text": {
+        "primary": "#ECFDF5",
+        "secondary": "#A7F3D0",
+        "muted": "rgba(236, 253, 245, 0.6)"
+      },
+      "status": {
+        "success": "#34D399",
+        "warning": "#FBBF24",
+        "error": "#F87171"
+      }
+    },
+    "gradients": {
+      "primary_overlay": ["transparent", "rgba(5, 46, 22, 0.8)", "#052E16"],
+      "glass_sheen": ["rgba(255,255,255,0.1)", "rgba(255,255,255,0)"]
+    }
+  },
+  "layout_and_spacing": {
+    "grid_system": {
+      "base_unit": 4,
+      "gutter": 16,
+      "margin": 20
+    },
+    "containers": {
+      "card_radius": 24,
+      "button_radius": 9999,
+      "modal_radius": 32
+    },
+    "z_index": {
+      "background": 0,
+      "particles": 10,
+      "content": 20,
+      "floating_widget": 50,
+      "overlay": 100
+    }
+  },
+  "components": {
+    "GlassView": {
+      "description": "Core container for all UI elements. Uses BlurView.",
+      "props": {
+        "intensity": 30,
+        "tint": "dark",
+        "style": {
+          "backgroundColor": "colors.glass.background",
+          "borderColor": "colors.glass.border",
+          "borderWidth": 1,
+          "overflow": "hidden"
+        }
+      }
+    },
+    "FloatingVolumeWidget": {
+      "description": "Always visible bottom-center control. Circular/Pill shape.",
+      "style": {
+        "position": "absolute",
+        "bottom": 40,
+        "alignSelf": "center",
+        "width": 64,
+        "height": 64,
+        "borderRadius": 32,
+        "backgroundColor": "rgba(0,0,0,0.5)",
+        "backdropFilter": "blur(20px)"
+      },
+      "interaction": "Vertical drag to change volume. Haptic feedback on limits."
+    },
+    "WallpaperCard": {
+      "description": "Grid item for wallpaper selection.",
+      "style": {
+        "height": 200,
+        "borderRadius": 24,
+        "marginBottom": 16
+      }
+    }
+  },
+  "assets": {
+    "icons": {
+      "library": "@expo/vector-icons",
+      "set": "Ionicons",
+      "mapping": {
+        "home": "leaf-outline",
+        "gallery": "images-outline",
+        "video": "film-outline",
+        "radio": "radio-outline",
+        "settings": "settings-outline",
+        "volume_up": "volume-high-outline",
+        "volume_down": "volume-low-outline",
+        "play": "play-circle-outline",
+        "pause": "pause-circle-outline"
+      }
+    },
+    "images": {
+      "placeholders": [
+        {
+          "category": "Nature",
+          "url": "https://images.unsplash.com/photo-1766317897765-28f0cc34a392?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHw0fHxuYXR1cmUlMjB2ZXJ0aWNhbCUyMG1vYmlsZSUyMHdhbGxwYXBlciUyMGZvcmVzdCUyMHJhaW4lMjBzbm93JTIwY29zbW9zfGVufDB8fHx8MTc3MzU2OTQxN3ww&ixlib=rb-4.1.0&q=85",
+          "alt": "Evergreen Path"
+        },
+        {
+          "category": "Autumn",
+          "url": "https://images.unsplash.com/photo-1651839909922-1e9f6c381c51?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwyfHxuYXR1cmUlMjB2ZXJ0aWNhbCUyMG1vYmlsZSUyMHdhbGxwYXBlciUyMGZvcmVzdCUyMHJhaW4lMjBzbm93JTIwY29zbW9zfGVufDB8fHx8MTc3MzU2OTQxN3ww&ixlib=rb-4.1.0&q=85",
+          "alt": "Orange Leaves"
+        },
+        {
+          "category": "Mist",
+          "url": "https://images.unsplash.com/photo-1773318435531-101e57047732?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwxfHxuYXR1cmUlMjB2ZXJ0aWNhbCUyMG1vYmlsZSUyMHdhbGxwYXBlciUyMGZvcmVzdCUyMHJhaW4lMjBzbm93JTIwY29zbW9zfGVufDB8fHx8MTc3MzU2OTQxN3ww&ixlib=rb-4.1.0&q=85",
+          "alt": "Misty Pines"
+        },
+        {
+          "category": "Cosmos",
+          "url": "https://images.unsplash.com/photo-1759132860340-40f8f537a8f6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwxfHxuYXR1cmUlMjBtZWRpdGF0aW9uJTIwbW9iaWxlJTIwd2FsbHBhcGVyJTIwdmVydGljYWwlMjBkYXJrJTIwZm9yZXN0JTIwY29zbW9zfGVufDB8fHx8MTc3MzU2OTQxMnww&ixlib=rb-4.1.0&q=85",
+          "alt": "Starry Night"
+        }
+      ]
+    }
+  },
+  "animation_guidelines": {
+    "library": "react-native-reanimated",
+    "transitions": {
+      "page_transition": "FadeIn.duration(400).easing(Easing.out(Easing.exp))",
+      "modal_slide": "SlideInDown.springify().damping(15)",
+      "touch_feedback": "Scale down to 0.95 on press"
+    },
+    "particles": {
+      "description": "Use Reanimated to drive simple SVG/View particles. Physics-based (gravity, wind).",
+      "types": ["rain (vertical line)", "snow (circle blur)", "leaves (rotate + drift)", "sparkles (scale + opacity)"]
+    }
+  },
+  "accessibility": {
+    "contrast": "Ensure white text on glass has sufficient shadow (textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 4).",
+    "touch_targets": "Minimum 44x44 points for all interactive elements.",
+    "haptics": "Use expo-haptics for slider changes and button presses."
+  },
+  "instructions_to_main_agent": [
+    "1. Initialize expo-font in the root layout (_layout.js) to load custom fonts.",
+    "2. Create a reusable 'GlassCard' component using BlurView that accepts children.",
+    "3. Implement the 'FloatingVolumeWidget' using PanGestureHandler from react-native-gesture-handler and Reanimated.",
+    "4. Use LinearGradient from expo-linear-gradient for background overlays to ensure text readability.",
+    "5. For Video Wallpapers, use expo-av Video component.",
+    "6. Ensure all dimensions use relative sizing (percentages or flex) or responsive scaling.",
+    "7. Add 'data-testid' props to all TouchableOpacity/Pressable components."
+  ]
+}
