@@ -1,6 +1,6 @@
 import React, { useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Dimensions, TouchableOpacity, Platform,
+  View, Text, StyleSheet, Dimensions, TouchableOpacity, Platform, Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -8,7 +8,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withSpring,
   runOnJS,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,25 +16,26 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as IntentLauncher from 'expo-intent-launcher';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
-import { useApp } from '../../contexts/AppContext';
+import { useApp, WallpaperItem } from '../../contexts/AppContext';
 import { getTranslation } from '../../constants/translations';
 import { COLORS } from '../../constants/colors';
+import { setWallpaperUri, launchWallpaperPicker, isWallpaperModuleAvailable } from '../../modules/wallpaper';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { currentWallpaper, nextWallpaper, prevWallpaper, isPlaying, currentStation, activeEffect, language } = useApp();
+  const {
+    currentWallpaper, nextWallpaper, prevWallpaper,
+    isPlaying, currentStation, activeEffect, language,
+    addWallpaper, setCurrentWallpaper,
+  } = useApp();
   const t = getTranslation(language);
 
-  const translateX = useSharedValue(0);
   const imgOpacity = useSharedValue(1);
-  const doubleTapCount = useRef(0);
-  const doubleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  React.useEffect(() => {}, []);
 
   const haptic = useCallback(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light), []);
 
@@ -66,10 +66,6 @@ export default function HomeScreen() {
         if (e.translationX < 0) runOnJS(goNext)();
         else runOnJS(goPrev)();
       }
-      if (e.translationY < -80) {
-        // swipe up: show effects hint
-        runOnJS(haptic)();
-      }
     });
 
   const tapGesture = Gesture.Tap()
@@ -83,6 +79,65 @@ export default function HomeScreen() {
   const wallpaperStyle = useAnimatedStyle(() => ({
     opacity: imgOpacity.value,
   }));
+
+  // Set live wallpaper on Android
+  const handleSetLiveWallpaper = useCallback(async () => {
+    if (Platform.OS !== 'android') {
+      // On web/iOS just show info
+      Alert.alert(
+        t.liveWallpaper,
+        'Live wallpapers are only available on Android devices. Please use the APK build.',
+      );
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    if (isWallpaperModuleAvailable() && currentWallpaper?.uri) {
+      try {
+        await setWallpaperUri(currentWallpaper.uri);
+        await launchWallpaperPicker();
+      } catch (e: any) {
+        // fallback: open Android wallpaper settings
+        try {
+          await IntentLauncher.startActivityAsync('android.intent.action.SET_WALLPAPER');
+        } catch {
+          Alert.alert(t.liveWallpaper, t.wallpaperSet);
+        }
+      }
+    } else {
+      try {
+        await IntentLauncher.startActivityAsync('android.intent.action.SET_WALLPAPER');
+      } catch {
+        Alert.alert(t.liveWallpaper, t.wallpaperSet);
+      }
+    }
+  }, [currentWallpaper, t]);
+
+  // Pick photo from file explorer
+  const handlePickPhoto = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const newItem: WallpaperItem = {
+          id: `file_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          uri: asset.uri,
+          type: 'photo',
+          name: asset.name || 'Photo',
+        };
+        addWallpaper(newItem);
+        setCurrentWallpaper(newItem);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (e) {
+      console.log('DocumentPicker error:', e);
+    }
+  }, [addWallpaper, setCurrentWallpaper]);
 
   return (
     <View style={styles.container}>
@@ -118,7 +173,7 @@ export default function HomeScreen() {
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
         <BlurView intensity={20} tint="dark" style={styles.topLeft}>
           <View style={styles.topLeftInner}>
-            <Text style={styles.appNameSmall}>🌿 RARE SHOT</Text>
+            <Text style={styles.appNameSmall}>{'\u{1F33F}'} RARE SHOT</Text>
           </View>
         </BlurView>
         <TouchableOpacity
@@ -134,8 +189,8 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Bottom info bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 68 }]} pointerEvents="none">
+      {/* Bottom section with buttons */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 68 }]} pointerEvents="box-none">
         {currentWallpaper && (
           <BlurView intensity={20} tint="dark" style={styles.wallpaperInfo}>
             <View style={styles.wallpaperInfoInner}>
@@ -144,16 +199,53 @@ export default function HomeScreen() {
             </View>
           </BlurView>
         )}
+
+        {/* Action buttons row */}
+        <View style={styles.actionRow}>
+          {/* Set Live Wallpaper button */}
+          <TouchableOpacity
+            testID="set-live-wallpaper-btn"
+            onPress={handleSetLiveWallpaper}
+            activeOpacity={0.8}
+            style={styles.actionBtnContainer}
+          >
+            <LinearGradient
+              colors={['#4ade80', '#16a34a']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.actionBtnGrad}
+            >
+              <Ionicons name="phone-portrait-outline" size={18} color="#000" />
+              <Text style={styles.actionBtnTextDark}>{t.setAsWallpaper}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* Pick from file explorer button */}
+          <TouchableOpacity
+            testID="pick-photo-btn"
+            onPress={handlePickPhoto}
+            activeOpacity={0.8}
+            style={styles.actionBtnContainer}
+          >
+            <BlurView intensity={20} tint="dark" style={styles.pickBtnBlur}>
+              <View style={styles.pickBtnInner}>
+                <Ionicons name="folder-open-outline" size={18} color={COLORS.accent} />
+                <Text style={styles.actionBtnTextLight}>{t.addPhoto}</Text>
+              </View>
+            </BlurView>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.bottomHints}>
           {activeEffect !== 'none' && (
             <View style={styles.hint}>
-              <Text style={styles.hintText}>✨ {t.effects}</Text>
+              <Text style={styles.hintText}>{'\u2728'} {t.effects}</Text>
             </View>
           )}
           {isPlaying && currentStation && (
             <View style={styles.hint}>
               <Ionicons name="musical-notes-outline" size={11} color={COLORS.accent} />
-              <Text style={styles.hintText} numberOfLines={1}> {currentStation.name}</Text>
+              <Text style={styles.hintText}> {currentStation.name}</Text>
             </View>
           )}
         </View>
@@ -172,147 +264,62 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
   topBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: 16,
-    zIndex: 10,
+    position: 'absolute', top: 0, left: 0, right: 0,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingHorizontal: 16, zIndex: 10,
   },
-  topLeft: {
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
+  topLeft: { borderRadius: 20, overflow: 'hidden' },
   topLeftInner: {
-    backgroundColor: 'rgba(0,10,5,0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 20,
+    backgroundColor: 'rgba(0,10,5,0.5)', paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 20,
   },
-  appNameSmall: {
-    color: COLORS.textPrimary,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-  },
-  settingsBtn: {
-    borderRadius: 22,
-    overflow: 'hidden',
-  },
-  settingsBtnBlur: {
-    borderRadius: 22,
-    overflow: 'hidden',
-  },
+  appNameSmall: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '700', letterSpacing: 1.5 },
+  settingsBtn: { borderRadius: 22, overflow: 'hidden' },
+  settingsBtnBlur: { borderRadius: 22, overflow: 'hidden' },
   settingsBtnInner: {
-    backgroundColor: 'rgba(0,10,5,0.5)',
-    padding: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 22,
-  },
-  timeContainer: {
-    position: 'absolute',
-    top: '28%',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 5,
-  },
-  timeText: {
-    fontSize: 64,
-    fontWeight: '200',
-    color: COLORS.white,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
-    letterSpacing: 2,
-  },
-  dateText: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.8)',
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-    marginTop: 4,
-    textTransform: 'capitalize',
+    backgroundColor: 'rgba(0,10,5,0.5)', padding: 10,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 22,
   },
   bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    zIndex: 5,
-    alignItems: 'center',
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingHorizontal: 16, zIndex: 5, alignItems: 'center',
   },
-  wallpaperInfo: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
+  wallpaperInfo: { borderRadius: 16, overflow: 'hidden', marginBottom: 10 },
   wallpaperInfoInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(0,10,5,0.55)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(0,10,5,0.55)', paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 16,
   },
-  wallpaperName: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '500',
-    maxWidth: 200,
+  wallpaperName: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '500', maxWidth: 200 },
+  actionRow: {
+    flexDirection: 'row', gap: 10, marginBottom: 10, width: '100%',
   },
-  bottomHints: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 6,
+  actionBtnContainer: { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  actionBtnGrad: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: 16,
   },
+  actionBtnTextDark: { color: '#000', fontSize: 14, fontWeight: '800' },
+  pickBtnBlur: { borderRadius: 16, overflow: 'hidden' },
+  pickBtnInner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: 16,
+    backgroundColor: 'rgba(0,10,5,0.6)', borderWidth: 1, borderColor: COLORS.borderGreen,
+  },
+  actionBtnTextLight: { color: COLORS.accent, fontSize: 14, fontWeight: '700' },
+  bottomHints: { flexDirection: 'row', gap: 8, marginBottom: 6 },
   hint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10,
   },
-  hintText: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-  },
-  swipeHint: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 11,
-    marginBottom: 4,
-  },
+  hintText: { color: COLORS.textMuted, fontSize: 11 },
+  swipeHint: { color: 'rgba(255,255,255,0.3)', fontSize: 11, marginBottom: 4 },
   arrowBtn: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: -20,
-    width: 36,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 8,
+    position: 'absolute', top: '50%', marginTop: -20,
+    width: 36, height: 40, alignItems: 'center', justifyContent: 'center', zIndex: 8,
   },
-  arrowLeft: {
-    left: 8,
-  },
-  arrowRight: {
-    right: 8,
-  },
+  arrowLeft: { left: 8 },
+  arrowRight: { right: 8 },
 });

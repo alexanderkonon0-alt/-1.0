@@ -5,7 +5,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { AppProvider, useApp } from '../contexts/AppContext';
-import { VolumeWidget } from '../components/VolumeWidget';
 import { ParticleSystem } from '../components/ParticleSystem';
 import { COLORS } from '../constants/colors';
 
@@ -19,7 +18,6 @@ function AppShell() {
         <Stack.Screen name="settings" options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }} />
       </Stack>
       <ParticleSystem type={activeEffect} intensity={effectIntensity} />
-      <VolumeWidget />
       <StatusBar style="light" translucent backgroundColor="transparent" />
     </View>
   );

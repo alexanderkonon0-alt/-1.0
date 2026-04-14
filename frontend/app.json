@@ -69,10 +69,19 @@
       ],
       "expo-audio",
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      "./plugins/withLiveWallpaper",
+      "./plugins/withAppWidget"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fa476e81-7170-410b-82dc-1771f5492cd5"
+      }
+    },
+    "owner": "ninset24"
   }
 }
