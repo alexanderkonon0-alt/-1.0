@@ -9,7 +9,7 @@ import { ParticleSystem } from '../components/ParticleSystem';
 import { COLORS } from '../constants/colors';
 
 function AppShell() {
-  const { activeEffect, effectIntensity } = useApp();
+  const { activeEffect, effectIntensity, effectSpeed } = useApp();
   return (
     <View style={styles.root}>
       <Stack screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: 'transparent' } }}>
@@ -17,7 +17,7 @@ function AppShell() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }} />
       </Stack>
-      <ParticleSystem type={activeEffect} intensity={effectIntensity} />
+      <ParticleSystem type={activeEffect} intensity={effectIntensity} speed={effectSpeed} />
       <StatusBar style="light" translucent backgroundColor="transparent" />
     </View>
   );

@@ -13,6 +13,7 @@ import { useApp } from '../contexts/AppContext';
 import { getTranslation, LANGUAGES } from '../constants/translations';
 import { COLORS } from '../constants/colors';
 import { INSTAGRAM_URL, WEBSITE_URL, EMAIL } from '../constants/radioStations';
+import { requestDeviceAdmin, isDeviceAdminEnabled, isWallpaperModuleAvailable } from '../modules/wallpaper';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -54,10 +55,22 @@ export default function SettingsScreen() {
       Alert.alert(t.accessibility, 'Available on Android only');
       return;
     }
-    try {
-      await IntentLauncher.startActivityAsync('android.settings.ACCESSIBILITY_SETTINGS');
-    } catch {
-      Alert.alert(t.enableAccessibility, t.enableInSettings);
+    if (isWallpaperModuleAvailable()) {
+      try {
+        await requestDeviceAdmin();
+      } catch {
+        try {
+          await IntentLauncher.startActivityAsync('android.settings.ACCESSIBILITY_SETTINGS');
+        } catch {
+          Alert.alert(t.enableAccessibility, t.enableInSettings);
+        }
+      }
+    } else {
+      try {
+        await IntentLauncher.startActivityAsync('android.settings.ACCESSIBILITY_SETTINGS');
+      } catch {
+        Alert.alert(t.enableAccessibility, t.enableInSettings);
+      }
     }
   };
 

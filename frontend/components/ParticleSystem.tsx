@@ -117,32 +117,35 @@ const Petal = memo(({ x, delay, duration }: { x: number; delay: number; duration
 interface Props {
   type: EffectType;
   intensity: number;
+  speed?: number; // 1=slow, 2=normal, 3=fast
 }
 
 const countMap: Record<number, number> = { 1: 20, 2: 40, 3: 65 };
+const speedMultiplier: Record<number, number> = { 1: 2.0, 2: 1.0, 3: 0.5 };
 
-export const ParticleSystem: React.FC<Props> = ({ type, intensity }) => {
+export const ParticleSystem: React.FC<Props> = ({ type, intensity, speed = 2 }) => {
   if (type === 'none') return null;
   const count = countMap[intensity] || 40;
+  const sm = speedMultiplier[speed] || 1.0;
 
   const particles = Array.from({ length: count }, (_, i) => {
     const x = Math.random() * SW;
-    const delay = Math.random() * 3000;
+    const delay = Math.random() * 3000 * sm;
     switch (type) {
       case 'rain':
-        return <RainDrop key={i} x={x} delay={delay} duration={300 + Math.random() * 400} />;
+        return <RainDrop key={i} x={x} delay={delay} duration={(300 + Math.random() * 400) * sm} />;
       case 'snow':
-        return <SnowFlake key={i} x={x} delay={delay} duration={2500 + Math.random() * 2500} size={3 + Math.random() * 7} />;
+        return <SnowFlake key={i} x={x} delay={delay} duration={(2500 + Math.random() * 2500) * sm} size={3 + Math.random() * 7} />;
       case 'leaves':
-        return <Leaf key={i} x={x} delay={delay} duration={3000 + Math.random() * 3000} color={LEAF_COLORS[i % LEAF_COLORS.length]} />;
+        return <Leaf key={i} x={x} delay={delay} duration={(3000 + Math.random() * 3000) * sm} color={LEAF_COLORS[i % LEAF_COLORS.length]} />;
       case 'sparkles':
         return <Sparkle key={i} x={x} y={Math.random() * SH} delay={delay} size={10 + Math.random() * 14} />;
       case 'bubbles':
-        return <Bubble key={i} x={x} delay={delay} duration={3000 + Math.random() * 4000} size={8 + Math.random() * 20} />;
+        return <Bubble key={i} x={x} delay={delay} duration={(3000 + Math.random() * 4000) * sm} size={8 + Math.random() * 20} />;
       case 'fireflies':
         return <Firefly key={i} x={x} y={Math.random() * SH} delay={delay} />;
       case 'petals':
-        return <Petal key={i} x={x} delay={delay} duration={4000 + Math.random() * 3000} />;
+        return <Petal key={i} x={x} delay={delay} duration={(4000 + Math.random() * 3000) * sm} />;
       default:
         return null;
     }

@@ -1,8 +1,17 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 import { RADIO_STATIONS, RadioStation } from '../constants/radioStations';
 import { Language } from '../constants/translations';
+import {
+  isWallpaperModuleAvailable,
+  setEffect as nativeSetEffect,
+  setAutoChange as nativeSetAutoChange,
+  setWallpaperUris as nativeSetWallpaperUris,
+  setWallpaperUri as nativeSetWallpaperUri,
+  setVideoUri as nativeSetVideoUri,
+} from '../modules/wallpaper';
 
 export type EffectType = 'none' | 'rain' | 'snow' | 'leaves' | 'sparkles' | 'bubbles' | 'fireflies' | 'petals';
 
@@ -11,52 +20,8 @@ export interface WallpaperItem {
   uri: string;
   type: 'photo' | 'video';
   name: string;
-  isBuiltIn?: boolean;
   thumbnailUri?: string;
-}
-
-const DAILY_WALLPAPERS = [
-  { uri: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=1080&q=80', name: 'Forest Light' },
-  { uri: 'https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?w=1080&q=80', name: 'Mountain Lake' },
-  { uri: 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?w=1080&q=80', name: 'Flower Field' },
-  { uri: 'https://images.unsplash.com/photo-1444927714506-8492d94b4e3d?w=1080&q=80', name: 'Cosmic Space' },
-  { uri: 'https://images.unsplash.com/photo-1448375240586-882707db888b?w=1080&q=80', name: 'Misty Forest' },
-  { uri: 'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1080&q=80', name: 'Night Sky' },
-  { uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1080&q=80', name: 'Autumn Colors' },
-  { uri: 'https://images.unsplash.com/photo-1494500764479-0c8f2919a3d8?w=1080&q=80', name: 'Starry Lake' },
-  { uri: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1080&q=80', name: 'Green Hills' },
-  { uri: 'https://images.unsplash.com/photo-1559128010-7c1ad6e1b6a5?w=1080&q=80', name: 'Ocean Sunset' },
-];
-
-const BUILT_IN_WALLPAPERS: WallpaperItem[] = [
-  { id: 'builtin_1', uri: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=1080&q=80', type: 'photo', name: 'Forest Light', isBuiltIn: true },
-  { id: 'builtin_2', uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1080&q=80', type: 'photo', name: 'Autumn Leaves', isBuiltIn: true },
-  { id: 'builtin_3', uri: 'https://images.unsplash.com/photo-1448375240586-882707db888b?w=1080&q=80', type: 'photo', name: 'Misty Pines', isBuiltIn: true },
-  { id: 'builtin_4', uri: 'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1080&q=80', type: 'photo', name: 'Starry Night', isBuiltIn: true },
-  { id: 'builtin_5', uri: 'https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?w=1080&q=80', type: 'photo', name: 'Mountain Lake', isBuiltIn: true },
-  { id: 'builtin_6', uri: 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?w=1080&q=80', type: 'photo', name: 'Flower Field', isBuiltIn: true },
-  { id: 'builtin_7', uri: 'https://images.unsplash.com/photo-1444927714506-8492d94b4e3d?w=1080&q=80', type: 'photo', name: 'Cosmic Space', isBuiltIn: true },
-  { id: 'builtin_8', uri: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1080&q=80', type: 'photo', name: 'Green Hills', isBuiltIn: true },
-];
-
-function getDailyWallpaperIndex(): number {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  const diff = now.getTime() - start.getTime();
-  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
-  return dayOfYear % DAILY_WALLPAPERS.length;
-}
-
-// Audio helper - lazy import to avoid crashes on web
-let audioModule: any = null;
-async function getAudioModule() {
-  if (audioModule) return audioModule;
-  try {
-    audioModule = await import('expo-audio');
-    return audioModule;
-  } catch {
-    return null;
-  }
+  isBuiltIn?: boolean;
 }
 
 interface AppContextType {
@@ -68,8 +33,6 @@ interface AppContextType {
   setCurrentWallpaper: (item: WallpaperItem) => void;
   nextWallpaper: () => void;
   prevWallpaper: () => void;
-  dailyWallpaper: { uri: string; name: string } | null;
-  applyDailyWallpaper: () => void;
   volume: number;
   setVolume: (v: number) => void;
   isPlaying: boolean;
@@ -81,22 +44,22 @@ interface AppContextType {
   togglePlay: () => void;
   activeEffect: EffectType;
   effectIntensity: number;
+  effectSpeed: number;
   setActiveEffect: (e: EffectType) => void;
   setEffectIntensity: (n: number) => void;
+  setEffectSpeed: (n: number) => void;
   autoChange: boolean;
   autoChangeInterval: number;
   setAutoChange: (v: boolean) => void;
   setAutoChangeInterval: (ms: number) => void;
   language: Language;
   setLanguage: (l: Language) => void;
-  isWidgetCollapsed: boolean;
-  setIsWidgetCollapsed: (v: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType>({} as AppContextType);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [wallpapers, setWallpapers] = useState<WallpaperItem[]>(BUILT_IN_WALLPAPERS);
+  const [wallpapers, setWallpapers] = useState<WallpaperItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [volumeState, setVolumeState] = useState(0.7);
   const [stationIndex, setStationIndex] = useState(0);
@@ -104,38 +67,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeEffect, setActiveEffect] = useState<EffectType>('leaves');
   const [effectIntensity, setEffectIntensity] = useState(2);
+  const [effectSpeed, setEffectSpeedState] = useState(2);
   const [autoChange, setAutoChange] = useState(false);
   const [autoChangeInterval, setAutoChangeInterval] = useState(300);
-  const [language, setLang] = useState<Language>('en');
-  const [isWidgetCollapsed, setIsWidgetCollapsed] = useState(false);
-  const dailyWallpaper = DAILY_WALLPAPERS[getDailyWallpaperIndex()];
+  const [language, setLang] = useState<Language>('ru');
 
-  const audioPlayerRef = useRef<any>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
   const isPlayingRef = useRef(false);
   const autoChangeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stationIndexRef = useRef(0);
+  const volumeRef = useRef(0.7);
 
-  // Load persisted data
   useEffect(() => {
     loadPersistedData();
-  }, []);
-
-  // Setup audio on mount
-  useEffect(() => {
-    initAudio();
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync().catch(() => {});
+      }
+    };
   }, []);
 
   const initAudio = async () => {
     try {
-      const audio = await getAudioModule();
-      if (!audio) return;
-
-      if (audio.setAudioModeAsync) {
-        await audio.setAudioModeAsync({
-          shouldPlayInBackground: true,
-          playsInSilentMode: true,
-        });
-      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
     } catch (e) {
       console.log('Audio init error:', e);
     }
@@ -143,11 +103,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loadPersistedData = async () => {
     try {
-      const [savedWallpapers, savedLang, savedEffect, savedIntensity, savedVolume, savedStation, savedAutoChange, savedInterval] = await Promise.all([
+      await initAudio();
+
+      const [savedWallpapers, savedLang, savedEffect, savedIntensity, savedSpeed, savedVolume, savedStation, savedAutoChange, savedInterval] = await Promise.all([
         AsyncStorage.getItem('wallpapers'),
         AsyncStorage.getItem('language'),
         AsyncStorage.getItem('activeEffect'),
         AsyncStorage.getItem('effectIntensity'),
+        AsyncStorage.getItem('effectSpeed'),
         AsyncStorage.getItem('volume'),
         AsyncStorage.getItem('stationIndex'),
         AsyncStorage.getItem('autoChange'),
@@ -156,11 +119,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (savedWallpapers) {
         const parsed = JSON.parse(savedWallpapers);
-        setWallpapers([...BUILT_IN_WALLPAPERS, ...parsed.filter((w: WallpaperItem) => !w.isBuiltIn)]);
+        if (Array.isArray(parsed)) setWallpapers(parsed);
       }
-      if (savedLang) {
-        setLang(savedLang as Language);
-      } else {
+      if (savedLang) setLang(savedLang as Language);
+      else {
         try {
           const Localization = await import('expo-localization');
           const deviceLang = Localization.locale?.split('-')[0] as Language;
@@ -170,7 +132,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (savedEffect) setActiveEffect(savedEffect as EffectType);
       if (savedIntensity) setEffectIntensity(parseInt(savedIntensity));
-      if (savedVolume) setVolumeState(parseFloat(savedVolume));
+      if (savedSpeed) setEffectSpeedState(parseInt(savedSpeed));
+      if (savedVolume) { setVolumeState(parseFloat(savedVolume)); volumeRef.current = parseFloat(savedVolume); }
       if (savedStation) {
         const idx = parseInt(savedStation);
         stationIndexRef.current = idx;
@@ -180,11 +143,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (savedAutoChange) setAutoChange(savedAutoChange === 'true');
       if (savedInterval) setAutoChangeInterval(parseInt(savedInterval));
 
-      // Auto-play first station after delay
+      // Auto-play first station
       setTimeout(() => {
         const station = RADIO_STATIONS[savedStation ? parseInt(savedStation) : 0] || RADIO_STATIONS[0];
         playStationInternal(station);
-      }, 2000);
+      }, 1500);
     } catch (e) {
       console.log('Load error:', e);
     }
@@ -192,27 +155,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const playStationInternal = async (station: RadioStation) => {
     try {
-      // Stop existing player
-      if (audioPlayerRef.current) {
+      // Stop existing sound
+      if (soundRef.current) {
         try {
-          await audioPlayerRef.current.release?.();
+          await soundRef.current.stopAsync();
+          await soundRef.current.unloadAsync();
         } catch {}
-        audioPlayerRef.current = null;
+        soundRef.current = null;
       }
 
-      const audio = await getAudioModule();
-      if (!audio) return;
+      console.log('Playing station:', station.name, station.url);
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: station.url },
+        { shouldPlay: true, volume: volumeRef.current, isLooping: false }
+      );
+      soundRef.current = sound;
+      setIsPlaying(true);
+      isPlayingRef.current = true;
+      console.log('Station playing successfully:', station.name);
 
-      // Use Audio.Sound for streaming
-      if (audio.Audio?.Sound) {
-        const { sound } = await audio.Audio.Sound.createAsync(
-          { uri: station.url },
-          { shouldPlay: true, volume: volumeState }
-        );
-        audioPlayerRef.current = sound;
-        setIsPlaying(true);
-        isPlayingRef.current = true;
-      }
+      // Listen for playback status to detect errors
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && !status.isPlaying && !status.isBuffering && status.didJustFinish) {
+          // Stream ended, try to replay
+          sound.playAsync().catch(() => {});
+        }
+      });
     } catch (e) {
       console.log('Play station error:', e);
       setIsPlaying(false);
@@ -229,30 +197,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       AsyncStorage.setItem('stationIndex', String(idx));
     }
     await playStationInternal(station);
-  }, [volumeState]);
+  }, []);
 
   const togglePlay = useCallback(async () => {
     try {
-      if (!audioPlayerRef.current) {
-        if (currentStation) {
-          await playStationInternal(currentStation);
-        }
+      if (!soundRef.current) {
+        if (currentStation) await playStationInternal(currentStation);
         return;
       }
-      const status = await audioPlayerRef.current.getStatusAsync?.();
-      if (status?.isPlaying) {
-        await audioPlayerRef.current.pauseAsync?.();
+      const status = await soundRef.current.getStatusAsync();
+      if (status.isLoaded && status.isPlaying) {
+        await soundRef.current.pauseAsync();
         setIsPlaying(false);
         isPlayingRef.current = false;
       } else {
-        await audioPlayerRef.current.playAsync?.();
+        await soundRef.current.playAsync();
         setIsPlaying(true);
         isPlayingRef.current = true;
       }
     } catch (e) {
       console.log('togglePlay error:', e);
+      // Recreate if broken
+      if (currentStation) await playStationInternal(currentStation);
     }
-  }, [currentStation, volumeState]);
+  }, [currentStation]);
 
   const nextStation = useCallback(() => {
     const next = (stationIndexRef.current + 1) % RADIO_STATIONS.length;
@@ -262,7 +230,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const station = RADIO_STATIONS[next];
     setCurrentStation(station);
     playStationInternal(station);
-  }, [volumeState]);
+  }, []);
 
   const prevStation = useCallback(() => {
     const prev = (stationIndexRef.current - 1 + RADIO_STATIONS.length) % RADIO_STATIONS.length;
@@ -272,31 +240,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const station = RADIO_STATIONS[prev];
     setCurrentStation(station);
     playStationInternal(station);
-  }, [volumeState]);
+  }, []);
 
   const setVolume = useCallback(async (v: number) => {
     const clamped = Math.max(0, Math.min(1, v));
     setVolumeState(clamped);
+    volumeRef.current = clamped;
     AsyncStorage.setItem('volume', String(clamped));
-    if (audioPlayerRef.current) {
-      try {
-        await audioPlayerRef.current.setVolumeAsync?.(clamped);
-      } catch {}
+    if (soundRef.current) {
+      try { await soundRef.current.setVolumeAsync(clamped); } catch {}
     }
   }, []);
 
-  // AppState handler
+  // AppState handler - pause/resume
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (state: AppStateStatus) => {
       if (state === 'background' || state === 'inactive') {
-        // Pause on background
-        if (audioPlayerRef.current && isPlayingRef.current) {
-          try { await audioPlayerRef.current.pauseAsync?.(); } catch {}
+        if (soundRef.current && isPlayingRef.current) {
+          try { await soundRef.current.pauseAsync(); } catch {}
         }
       } else if (state === 'active') {
-        // Resume on foreground
-        if (audioPlayerRef.current && isPlayingRef.current) {
-          try { await audioPlayerRef.current.playAsync?.(); } catch {}
+        if (soundRef.current && isPlayingRef.current) {
+          try { await soundRef.current.playAsync(); } catch {}
         }
       }
     });
@@ -316,20 +281,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [autoChange, autoChangeInterval, wallpapers.length]);
 
-  const addWallpaper = useCallback(async (item: WallpaperItem) => {
+  const persistWallpapers = (items: WallpaperItem[]) => {
+    AsyncStorage.setItem('wallpapers', JSON.stringify(items));
+  };
+
+  const addWallpaper = useCallback((item: WallpaperItem) => {
     setWallpapers(prev => {
       const next = [item, ...prev];
-      const userItems = next.filter(w => !w.isBuiltIn);
-      AsyncStorage.setItem('wallpapers', JSON.stringify(userItems));
+      persistWallpapers(next);
       return next;
     });
   }, []);
 
-  const removeWallpaper = useCallback(async (id: string) => {
+  const removeWallpaper = useCallback((id: string) => {
     setWallpapers(prev => {
       const next = prev.filter(w => w.id !== id);
-      const userItems = next.filter(w => !w.isBuiltIn);
-      AsyncStorage.setItem('wallpapers', JSON.stringify(userItems));
+      persistWallpapers(next);
       return next;
     });
   }, []);
@@ -340,63 +307,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [wallpapers]);
 
   const nextWallpaper = useCallback(() => {
+    if (wallpapers.length === 0) return;
     setCurrentIndex(prev => (prev + 1) % wallpapers.length);
   }, [wallpapers.length]);
 
   const prevWallpaper = useCallback(() => {
+    if (wallpapers.length === 0) return;
     setCurrentIndex(prev => (prev - 1 + wallpapers.length) % wallpapers.length);
   }, [wallpapers.length]);
 
-  const setLanguage = useCallback((l: Language) => {
-    setLang(l);
-    AsyncStorage.setItem('language', l);
-  }, []);
+  const setLanguage = useCallback((l: Language) => { setLang(l); AsyncStorage.setItem('language', l); }, []);
+  const handleSetActiveEffect = useCallback((e: EffectType) => { setActiveEffect(e); AsyncStorage.setItem('activeEffect', e); }, []);
+  const handleSetEffectIntensity = useCallback((n: number) => { setEffectIntensity(n); AsyncStorage.setItem('effectIntensity', String(n)); }, []);
+  const handleSetEffectSpeed = useCallback((n: number) => { setEffectSpeedState(n); AsyncStorage.setItem('effectSpeed', String(n)); }, []);
+  const handleSetAutoChange = useCallback((v: boolean) => { setAutoChange(v); AsyncStorage.setItem('autoChange', String(v)); }, []);
+  const handleSetAutoChangeInterval = useCallback((ms: number) => { setAutoChangeInterval(ms); AsyncStorage.setItem('autoChangeInterval', String(ms)); }, []);
 
-  const handleSetActiveEffect = useCallback((e: EffectType) => {
-    setActiveEffect(e);
-    AsyncStorage.setItem('activeEffect', e);
-  }, []);
+  // ── Sync settings to native WallpaperService (Android) ──
+  useEffect(() => {
+    if (!isWallpaperModuleAvailable()) return;
+    nativeSetEffect(activeEffect, effectIntensity, effectSpeed).catch(() => {});
+  }, [activeEffect, effectIntensity, effectSpeed]);
 
-  const handleSetEffectIntensity = useCallback((n: number) => {
-    setEffectIntensity(n);
-    AsyncStorage.setItem('effectIntensity', String(n));
-  }, []);
+  useEffect(() => {
+    if (!isWallpaperModuleAvailable()) return;
+    nativeSetAutoChange(autoChange, autoChangeInterval).catch(() => {});
+  }, [autoChange, autoChangeInterval]);
 
-  const handleSetAutoChange = useCallback((v: boolean) => {
-    setAutoChange(v);
-    AsyncStorage.setItem('autoChange', String(v));
-  }, []);
+  useEffect(() => {
+    if (!isWallpaperModuleAvailable()) return;
+    const uris = wallpapers.filter(w => w.type === 'photo').map(w => w.uri);
+    nativeSetWallpaperUris(uris).catch(() => {});
+  }, [wallpapers]);
 
-  const handleSetAutoChangeInterval = useCallback((ms: number) => {
-    setAutoChangeInterval(ms);
-    AsyncStorage.setItem('autoChangeInterval', String(ms));
-  }, []);
-
-  const applyDailyWallpaper = useCallback(() => {
-    const daily = DAILY_WALLPAPERS[getDailyWallpaperIndex()];
-    const id = `daily_${new Date().toDateString().replace(/ /g, '_')}`;
-    const existing = wallpapers.find(w => w.uri === daily.uri);
-    if (existing) {
-      setCurrentWallpaper(existing);
+  useEffect(() => {
+    if (!isWallpaperModuleAvailable()) return;
+    const cw = wallpapers.length > 0 ? (wallpapers[currentIndex] || wallpapers[0]) : null;
+    if (!cw) return;
+    if (cw.type === 'video') {
+      nativeSetVideoUri(cw.uri).catch(() => {});
     } else {
-      const newItem: WallpaperItem = { id, uri: daily.uri, type: 'photo', name: `Daily: ${daily.name}` };
-      addWallpaper(newItem);
-      setTimeout(() => setCurrentIndex(0), 100);
+      nativeSetWallpaperUri(cw.uri).catch(() => {});
     }
-  }, [wallpapers, addWallpaper, setCurrentWallpaper]);
+  }, [currentIndex, wallpapers]);
 
   return (
     <AppContext.Provider value={{
       wallpapers,
-      currentWallpaper: wallpapers[currentIndex] || null,
+      currentWallpaper: wallpapers.length > 0 ? (wallpapers[currentIndex] || wallpapers[0]) : null,
       currentIndex,
       addWallpaper,
       removeWallpaper,
       setCurrentWallpaper,
       nextWallpaper,
       prevWallpaper,
-      dailyWallpaper,
-      applyDailyWallpaper,
       volume: volumeState,
       setVolume,
       isPlaying,
@@ -408,16 +372,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       togglePlay,
       activeEffect,
       effectIntensity,
+      effectSpeed,
       setActiveEffect: handleSetActiveEffect,
       setEffectIntensity: handleSetEffectIntensity,
+      setEffectSpeed: handleSetEffectSpeed,
       autoChange,
       autoChangeInterval,
       setAutoChange: handleSetAutoChange,
       setAutoChangeInterval: handleSetAutoChangeInterval,
       language,
       setLanguage,
-      isWidgetCollapsed,
-      setIsWidgetCollapsed,
     }}>
       {children}
     </AppContext.Provider>

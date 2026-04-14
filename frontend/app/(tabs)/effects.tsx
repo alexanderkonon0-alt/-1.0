@@ -17,29 +17,31 @@ import { COLORS } from '../../constants/colors';
 const { width: SW } = Dimensions.get('window');
 
 const EFFECTS: { type: EffectType; icon: string; emoji: string; color: string }[] = [
-  { type: 'none', icon: 'ban-outline', emoji: '—', color: COLORS.textMuted },
-  { type: 'rain', icon: 'rainy-outline', emoji: '🌧', color: '#60a5fa' },
-  { type: 'snow', icon: 'snow-outline', emoji: '❄️', color: '#e0f2fe' },
-  { type: 'leaves', icon: 'leaf-outline', emoji: '🍃', color: '#4ade80' },
-  { type: 'sparkles', icon: 'sparkles-outline', emoji: '✨', color: '#fbbf24' },
-  { type: 'bubbles', icon: 'ellipse-outline', emoji: '🫧', color: '#a7f3d0' },
-  { type: 'fireflies', icon: 'flashlight-outline', emoji: '⭐', color: '#d9f99d' },
-  { type: 'petals', icon: 'flower-outline', emoji: '🌸', color: '#fda4af' },
+  { type: 'none', icon: 'ban-outline', emoji: '\u2014', color: COLORS.textMuted },
+  { type: 'rain', icon: 'rainy-outline', emoji: '\u{1F327}', color: '#60a5fa' },
+  { type: 'snow', icon: 'snow-outline', emoji: '\u2744\uFE0F', color: '#e0f2fe' },
+  { type: 'leaves', icon: 'leaf-outline', emoji: '\u{1F343}', color: '#4ade80' },
+  { type: 'sparkles', icon: 'sparkles-outline', emoji: '\u2728', color: '#fbbf24' },
+  { type: 'bubbles', icon: 'ellipse-outline', emoji: '\u{1FAE7}', color: '#a7f3d0' },
+  { type: 'fireflies', icon: 'flashlight-outline', emoji: '\u2B50', color: '#d9f99d' },
+  { type: 'petals', icon: 'flower-outline', emoji: '\u{1F338}', color: '#fda4af' },
 ];
 
 const INTENSITIES = [1, 2, 3];
+const SPEEDS = [1, 2, 3];
 
-const MiniPreview = ({ type, intensity }: { type: EffectType; intensity: number }) => {
+const MiniPreview = ({ type, intensity, speed }: { type: EffectType; intensity: number; speed: number }) => {
   const op = useSharedValue(0.4);
   const y = useSharedValue(0);
+  const speedMs = speed === 1 ? 1200 : speed === 2 ? 700 : 400;
   React.useEffect(() => {
     if (type !== 'none') {
-      op.value = withRepeat(withSequence(withTiming(1, { duration: 600 }), withTiming(0.3, { duration: 600 })), -1, true);
-      y.value = withRepeat(withSequence(withTiming(-8, { duration: 800 }), withTiming(8, { duration: 800 })), -1, true);
+      op.value = withRepeat(withSequence(withTiming(1, { duration: speedMs }), withTiming(0.3, { duration: speedMs })), -1, true);
+      y.value = withRepeat(withSequence(withTiming(-8, { duration: speedMs * 1.2 }), withTiming(8, { duration: speedMs * 1.2 })), -1, true);
     }
-  }, [type]);
+  }, [type, speed]);
   const aStyle = useAnimatedStyle(() => ({ opacity: op.value, transform: [{ translateY: y.value }] }));
-  if (type === 'none') return <View style={styles.previewPlaceholder}><Text style={styles.previewNone}>—</Text></View>;
+  if (type === 'none') return <View style={styles.previewPlaceholder}><Text style={styles.previewNone}>\u2014</Text></View>;
   const eff = EFFECTS.find(e => e.type === type);
   return (
     <View style={styles.previewBox}>
@@ -54,10 +56,11 @@ const MiniPreview = ({ type, intensity }: { type: EffectType; intensity: number 
 
 export default function EffectsScreen() {
   const insets = useSafeAreaInsets();
-  const { activeEffect, setActiveEffect, effectIntensity, setEffectIntensity, language } = useApp();
+  const { activeEffect, setActiveEffect, effectIntensity, setEffectIntensity, effectSpeed, setEffectSpeed, language } = useApp();
   const t = getTranslation(language);
 
   const intensityLabels: Record<number, string> = { 1: t.low, 2: t.medium, 3: t.high };
+  const speedLabels: Record<number, string> = { 1: t.speedSlow || 'Slow', 2: t.speedNormal || 'Normal', 3: t.speedFast || 'Fast' };
 
   return (
     <View style={styles.container}>
@@ -67,13 +70,13 @@ export default function EffectsScreen() {
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 160 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>✨ {t.particles}</Text>
+        <Text style={styles.title}>{'\u2728'} {t.particles}</Text>
 
         {/* Current effect preview */}
         <BlurView intensity={20} tint="dark" style={styles.previewCard}>
           <View style={styles.previewCardInner}>
             <Text style={styles.sectionLabel}>{t.preview}</Text>
-            <MiniPreview type={activeEffect} intensity={effectIntensity} />
+            <MiniPreview type={activeEffect} intensity={effectIntensity} speed={effectSpeed} />
             <Text style={styles.activeEffectName}>
               {t[`effect${activeEffect.charAt(0).toUpperCase() + activeEffect.slice(1)}` as keyof typeof t] || activeEffect}
             </Text>
@@ -83,17 +86,14 @@ export default function EffectsScreen() {
         {/* Effect selector grid */}
         <Text style={styles.sectionTitle}>{t.particles}</Text>
         <View style={styles.effectGrid}>
-          {EFFECTS.map(({ type, icon, emoji, color }) => {
+          {EFFECTS.map(({ type, emoji, color }) => {
             const isActive = activeEffect === type;
             return (
               <TouchableOpacity
                 testID={`effect-${type}`}
                 key={type}
                 style={[styles.effectCard, isActive && styles.effectCardActive]}
-                onPress={() => {
-                  setActiveEffect(type);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }}
+                onPress={() => { setActiveEffect(type); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                 activeOpacity={0.8}
               >
                 <BlurView intensity={15} tint="dark" style={styles.effectBlur}>
@@ -119,42 +119,55 @@ export default function EffectsScreen() {
 
         {/* Intensity selector */}
         {activeEffect !== 'none' && (
-          <View style={styles.intensitySection}>
-            <Text style={styles.sectionTitle}>{t.intensity}</Text>
-            <View style={styles.intensityRow}>
-              {INTENSITIES.map(n => (
-                <TouchableOpacity
-                  testID={`intensity-${n}`}
-                  key={n}
-                  style={[styles.intensityBtn, effectIntensity === n && styles.intensityBtnActive]}
-                  onPress={() => {
-                    setEffectIntensity(n);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                >
-                  <Text style={[styles.intensityBtnText, effectIntensity === n && styles.intensityBtnTextActive]}>
-                    {intensityLabels[n]}
-                  </Text>
-                  <View style={styles.intensityDots}>
-                    {Array.from({ length: n }).map((_, i) => (
-                      <View key={i} style={[styles.intensityDot, effectIntensity === n && styles.intensityDotActive]} />
-                    ))}
-                  </View>
-                </TouchableOpacity>
-              ))}
+          <>
+            <View style={styles.intensitySection}>
+              <Text style={styles.sectionTitle}>{t.intensity}</Text>
+              <View style={styles.intensityRow}>
+                {INTENSITIES.map(n => (
+                  <TouchableOpacity
+                    testID={`intensity-${n}`}
+                    key={n}
+                    style={[styles.intensityBtn, effectIntensity === n && styles.intensityBtnActive]}
+                    onPress={() => { setEffectIntensity(n); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  >
+                    <Text style={[styles.intensityBtnText, effectIntensity === n && styles.intensityBtnTextActive]}>
+                      {intensityLabels[n]}
+                    </Text>
+                    <View style={styles.intensityDots}>
+                      {Array.from({ length: n }).map((_, i) => (
+                        <View key={i} style={[styles.intensityDot, effectIntensity === n && styles.intensityDotActive]} />
+                      ))}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
-        )}
 
-        {/* Info */}
-        <BlurView intensity={15} tint="dark" style={styles.infoCard}>
-          <View style={styles.infoCardInner}>
-            <Ionicons name="information-circle-outline" size={16} color={COLORS.accent} />
-            <Text style={styles.infoText}>
-              Эффекты отображаются поверх обоев в реальном времени с аппаратным ускорением.
-            </Text>
-          </View>
-        </BlurView>
+            {/* Speed selector */}
+            <View style={styles.intensitySection}>
+              <Text style={styles.sectionTitle}>{'\u{1F3CE}\uFE0F'} {t.effectSpeed || 'Speed'}</Text>
+              <View style={styles.intensityRow}>
+                {SPEEDS.map(n => (
+                  <TouchableOpacity
+                    testID={`speed-${n}`}
+                    key={n}
+                    style={[styles.intensityBtn, effectSpeed === n && styles.speedBtnActive]}
+                    onPress={() => { setEffectSpeed(n); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  >
+                    <Text style={[styles.intensityBtnText, effectSpeed === n && styles.speedBtnTextActive]}>
+                      {speedLabels[n]}
+                    </Text>
+                    <View style={styles.intensityDots}>
+                      {Array.from({ length: n }).map((_, i) => (
+                        <View key={i} style={[styles.speedDot, effectSpeed === n && styles.speedDotActive]} />
+                      ))}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -187,10 +200,11 @@ const styles = StyleSheet.create({
   intensityBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentDim },
   intensityBtnText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
   intensityBtnTextActive: { color: COLORS.accent },
+  speedBtnActive: { borderColor: COLORS.gold, backgroundColor: COLORS.goldDim },
+  speedBtnTextActive: { color: COLORS.gold },
   intensityDots: { flexDirection: 'row', gap: 4 },
   intensityDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.textMuted },
   intensityDotActive: { backgroundColor: COLORS.accent },
-  infoCard: { borderRadius: 14, overflow: 'hidden' },
-  infoCardInner: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: COLORS.glass, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, padding: 12 },
-  infoText: { color: COLORS.textMuted, fontSize: 12, flex: 1, lineHeight: 18 },
+  speedDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.textMuted },
+  speedDotActive: { backgroundColor: COLORS.gold },
 });
