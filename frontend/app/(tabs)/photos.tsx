@@ -16,6 +16,8 @@ import { COLORS } from '../../constants/colors';
 import { GOOGLE_PHOTOS_URL } from '../../constants/radioStations';
 import { setWallpaperUri, launchWallpaperPicker, isWallpaperModuleAvailable } from '../../modules/wallpaper';
 
+const HARDCODED_BACKEND = 'https://russian-translator-5.preview.emergentagent.com';
+
 function getApiUrl(): string {
   const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
   if (envUrl && envUrl.length > 0) return envUrl;
@@ -23,7 +25,7 @@ function getApiUrl(): string {
     const host = Constants.expoConfig?.hostUri?.split(':')[0];
     if (host) return `https://${host}`;
   } catch {}
-  return '';
+  return HARDCODED_BACKEND;
 }
 
 const BACKEND_URL = getApiUrl();

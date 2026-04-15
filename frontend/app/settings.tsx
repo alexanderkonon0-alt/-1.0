@@ -55,19 +55,13 @@ export default function SettingsScreen() {
       Alert.alert(t.accessibility, 'Available on Android only');
       return;
     }
-    if (isWallpaperModuleAvailable()) {
+    try {
+      await IntentLauncher.startActivityAsync('android.settings.ACCESSIBILITY_SETTINGS');
+    } catch {
       try {
-        await requestDeviceAdmin();
-      } catch {
-        try {
-          await IntentLauncher.startActivityAsync('android.settings.ACCESSIBILITY_SETTINGS');
-        } catch {
-          Alert.alert(t.enableAccessibility, t.enableInSettings);
+        if (isWallpaperModuleAvailable()) {
+          await requestDeviceAdmin();
         }
-      }
-    } else {
-      try {
-        await IntentLauncher.startActivityAsync('android.settings.ACCESSIBILITY_SETTINGS');
       } catch {
         Alert.alert(t.enableAccessibility, t.enableInSettings);
       }

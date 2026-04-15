@@ -479,6 +479,46 @@ public class ScreenLockAdmin extends DeviceAdminReceiver {
 `;
 
 // ═══════════════════════════════════════════════════════════════
+// NATIVE JAVA: ScreenLockAccessibilityService
+// ═══════════════════════════════════════════════════════════════
+const ACCESSIBILITY_SERVICE_JAVA = `package ${PACKAGE_NAME};
+
+import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.os.Build;
+import android.view.accessibility.AccessibilityEvent;
+
+public class ScreenLockAccessibilityService extends AccessibilityService {
+    public static final String PREFS = "rareshot_prefs";
+    private long lastTapMs = 0;
+
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {}
+
+    @Override
+    public void onInterrupt() {}
+
+    @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        AccessibilityServiceInfo info = new AccessibilityServiceInfo();
+        info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
+        info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
+        info.flags = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
+        setServiceInfo(info);
+    }
+
+    public void performLockScreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+        }
+    }
+}
+`;
+
+// ═══════════════════════════════════════════════════════════════
 // XML Resources
 // ═══════════════════════════════════════════════════════════════
 const WALLPAPER_XML = `<?xml version="1.0" encoding="utf-8"?>
@@ -493,6 +533,17 @@ const DEVICE_ADMIN_XML = `<?xml version="1.0" encoding="utf-8"?>
         <force-lock />
     </uses-policies>
 </device-admin>
+`;
+
+const ACCESSIBILITY_XML = `<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canPerformGestures="true"
+    android:description="@string/app_name"
+    android:notificationTimeout="100"
+    android:settingsActivity="${PACKAGE_NAME}.MainActivity" />
 `;
 
 // ═══════════════════════════════════════════════════════════════
@@ -542,6 +593,17 @@ const withLiveWallpaper = (config) => {
         'intent-filter': [{ action: [{ $: { 'android:name': 'android.app.action.DEVICE_ADMIN_ENABLED' } }] }],
       });
     }
+
+    // AccessibilityService for screen lock
+    app.service = app.service || [];
+    if (!app.service.some(s => s.$?.['android:name'] === '.ScreenLockAccessibilityService')) {
+      app.service.push({
+        $: { 'android:name': '.ScreenLockAccessibilityService', 'android:label': 'Rare Shot Screen Lock',
+             'android:permission': 'android.permission.BIND_ACCESSIBILITY_SERVICE', 'android:exported': 'false' },
+        'intent-filter': [{ action: [{ $: { 'android:name': 'android.accessibilityservice.AccessibilityService' } }] }],
+        'meta-data': [{ $: { 'android:name': 'android.accessibilityservice', 'android:resource': '@xml/accessibility_config' } }],
+      });
+    }
     return cfg;
   });
 
@@ -564,6 +626,10 @@ const withLiveWallpaper = (config) => {
     // Write XML
     fs.writeFileSync(path.join(xmlDir, 'wallpaper.xml'), WALLPAPER_XML);
     fs.writeFileSync(path.join(xmlDir, 'device_admin.xml'), DEVICE_ADMIN_XML);
+    fs.writeFileSync(path.join(xmlDir, 'accessibility_config.xml'), ACCESSIBILITY_XML);
+
+    // Write Accessibility Service
+    fs.writeFileSync(path.join(jDir, 'ScreenLockAccessibilityService.java'), ACCESSIBILITY_SERVICE_JAVA);
 
     // ── Patch MainApplication to register WallpaperPackage ──
     const srcMain = path.join(andro, 'app', 'src', 'main');
