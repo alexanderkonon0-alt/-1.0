@@ -5,6 +5,145 @@ const path = require('path');
 const PACKAGE_NAME = 'com.rareshot.livewallpaper';
 
 // ═══════════════════════════════════════════════════════════════
+// NATIVE JAVA: AudioService (ForegroundService for radio)
+// ═══════════════════════════════════════════════════════════════
+const AUDIO_SERVICE_JAVA = `package ${PACKAGE_NAME};
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.media.AudioAttributes;
+import android.media.MediaPlayer;
+import android.os.Build;
+import android.os.IBinder;
+import android.util.Log;
+
+public class AudioService extends Service implements SharedPreferences.OnSharedPreferenceChangeListener {
+    public static final String PREFS = "rareshot_prefs";
+    private static final String CH_ID = "rareshot_audio";
+    private static final int NOTIF_ID = 9001;
+    private MediaPlayer player;
+    private String radioUrl;
+    private boolean isPlaying;
+    private SharedPreferences sp;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        createChannel();
+        sp = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        sp.registerOnSharedPreferenceChangeListener(this);
+        radioUrl = sp.getString("radio_url", null);
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            String action = intent.getAction();
+            if ("PLAY".equals(action)) {
+                radioUrl = sp.getString("radio_url", null);
+                startPlayback();
+            } else if ("STOP".equals(action)) {
+                stopPlayback();
+                stopForeground(true);
+                stopSelf();
+            } else if ("NEXT".equals(action)) {
+                int idx = sp.getInt("station_index", 0) + 1;
+                if (idx > 9) idx = 0;
+                sp.edit().putInt("station_index", idx).apply();
+            } else if ("PREV".equals(action)) {
+                int idx = sp.getInt("station_index", 0) - 1;
+                if (idx < 0) idx = 9;
+                sp.edit().putInt("station_index", idx).apply();
+            }
+        }
+        startForeground(NOTIF_ID, buildNotification());
+        return START_STICKY;
+    }
+
+    private void startPlayback() {
+        stopPlayback();
+        if (radioUrl == null || radioUrl.isEmpty()) return;
+        try {
+            player = new MediaPlayer();
+            player.setAudioAttributes(new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setUsage(AudioAttributes.USAGE_MEDIA).build());
+            player.setDataSource(radioUrl);
+            player.setOnPreparedListener(mp -> { mp.start(); isPlaying = true; updateNotif(); });
+            player.setOnErrorListener((mp, w, e) -> { Log.e("AudioService", "Error: " + w + "/" + e); stopPlayback(); return true; });
+            player.setOnCompletionListener(mp -> { stopPlayback(); startPlayback(); });
+            player.prepareAsync();
+        } catch (Exception e) { Log.e("AudioService", "Start error", e); stopPlayback(); }
+    }
+
+    private void stopPlayback() {
+        isPlaying = false;
+        if (player != null) {
+            try { player.stop(); } catch (Exception e) {}
+            try { player.release(); } catch (Exception e) {}
+            player = null;
+        }
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
+        if ("radio_url".equals(key)) {
+            radioUrl = prefs.getString("radio_url", null);
+            startPlayback();
+        }
+    }
+
+    private void createChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel ch = new NotificationChannel(CH_ID, "Rare Shot Audio", NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("Background audio playback");
+            ch.setSound(null, null);
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.createNotificationChannel(ch);
+        }
+    }
+
+    private Notification buildNotification() {
+        String title = sp.getString("station_name", "Rare Shot Radio");
+        Intent mainIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        PendingIntent pi = PendingIntent.getActivity(this, 0, mainIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) b = new Notification.Builder(this, CH_ID);
+        else b = new Notification.Builder(this);
+
+        return b.setContentTitle(title)
+            .setContentText(isPlaying ? "Playing..." : "Paused")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentIntent(pi)
+            .setOngoing(true)
+            .build();
+    }
+
+    private void updateNotif() {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) nm.notify(NOTIF_ID, buildNotification());
+    }
+
+    @Override
+    public void onDestroy() {
+        stopPlayback();
+        if (sp != null) sp.unregisterOnSharedPreferenceChangeListener(this);
+        super.onDestroy();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) { return null; }
+}
+`;
+
+// ═══════════════════════════════════════════════════════════════
 // NATIVE JAVA: LiveWallpaperService  (photo + particles + video
 //              + auto-change + double-tap screen-lock)
 // ═══════════════════════════════════════════════════════════════
@@ -471,6 +610,26 @@ public class WallpaperModule extends ReactContextBaseJavaModule {
             } else { p.reject("E", "Requires Android 7+"); }
         } catch (Exception e) { p.reject("E", e.getMessage()); }
     }
+    @ReactMethod public void startAudioService(Promise p) {
+        try {
+            android.content.Intent i = new android.content.Intent(getReactApplicationContext(), AudioService.class);
+            i.setAction("PLAY");
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                getReactApplicationContext().startForegroundService(i);
+            } else {
+                getReactApplicationContext().startService(i);
+            }
+            p.resolve(true);
+        } catch (Exception e) { p.reject("E", e.getMessage()); }
+    }
+    @ReactMethod public void stopAudioService(Promise p) {
+        try {
+            android.content.Intent i = new android.content.Intent(getReactApplicationContext(), AudioService.class);
+            i.setAction("STOP");
+            getReactApplicationContext().startService(i);
+            p.resolve(true);
+        } catch (Exception e) { p.reject("E", e.getMessage()); }
+    }
 }
 `;
 
@@ -638,6 +797,28 @@ const withLiveWallpaper = (config) => {
         'meta-data': [{ $: { 'android:name': 'android.accessibilityservice', 'android:resource': '@xml/accessibility_config' } }],
       });
     }
+
+    // AudioService for background radio playback
+    if (!app.service.some(s => s.$?.['android:name'] === '.AudioService')) {
+      app.service.push({
+        $: { 'android:name': '.AudioService', 'android:exported': 'false',
+             'android:foregroundServiceType': 'mediaPlayback' },
+      });
+    }
+
+    // Add FOREGROUND_SERVICE permission
+    const permissions = manifest['uses-permission'] || [];
+    const permNames = permissions.map(p => p.$?.['android:name']);
+    if (!permNames.includes('android.permission.FOREGROUND_SERVICE')) {
+      permissions.push({ $: { 'android:name': 'android.permission.FOREGROUND_SERVICE' } });
+    }
+    if (!permNames.includes('android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK')) {
+      permissions.push({ $: { 'android:name': 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK' } });
+    }
+    if (!permNames.includes('android.permission.INTERNET')) {
+      permissions.push({ $: { 'android:name': 'android.permission.INTERNET' } });
+    }
+    manifest['uses-permission'] = permissions;
     return cfg;
   });
 
@@ -664,6 +845,9 @@ const withLiveWallpaper = (config) => {
 
     // Write Accessibility Service
     fs.writeFileSync(path.join(jDir, 'ScreenLockAccessibilityService.java'), ACCESSIBILITY_SERVICE_JAVA);
+
+    // Write AudioService
+    fs.writeFileSync(path.join(jDir, 'AudioService.java'), AUDIO_SERVICE_JAVA);
 
     // ── Patch MainApplication to register WallpaperPackage ──
     const srcMain = path.join(andro, 'app', 'src', 'main');

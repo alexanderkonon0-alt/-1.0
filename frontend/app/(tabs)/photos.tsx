@@ -9,6 +9,7 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { useApp, WallpaperItem } from '../../contexts/AppContext';
 import { getTranslation } from '../../constants/translations';
@@ -29,6 +30,39 @@ function getApiUrl(): string {
 }
 
 const BACKEND_URL = getApiUrl();
+
+// Client-side Google Photos scraper (no backend needed)
+async function scrapeGooglePhotosDirect(albumUrl: string): Promise<{ url: string; thumbnail: string; name: string }[]> {
+  try {
+    const response = await fetch(albumUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+      redirect: 'follow',
+    });
+    const html = await response.text();
+    const regex = /(https:\/\/lh3\.googleusercontent\.com\/[^\s"'\\]+)/g;
+    const foundUrls = new Set<string>();
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      let cleanUrl = match[1].split('\\')[0];
+      if (cleanUrl.length > 50) {
+        const baseUrl = cleanUrl.replace(/=w\d+.*$/, '').replace(/=s\d+.*$/, '').replace(/=h\d+.*$/, '');
+        if (baseUrl.length > 40) foundUrls.add(baseUrl);
+      }
+    }
+    const photos = Array.from(foundUrls).slice(0, 50).map((base, i) => ({
+      url: base + '=w1080-h1920-no',
+      thumbnail: base + '=w400-h400-no',
+      name: `Photo ${i + 1}`,
+    }));
+    return photos;
+  } catch (e) {
+    console.log('[Photos] Direct scrape failed:', e);
+    return [];
+  }
+}
 const { width: SW } = Dimensions.get('window');
 const COLS = 3;
 const THUMB_SIZE = (SW - 4) / COLS;
@@ -87,11 +121,12 @@ export default function PhotosScreen() {
     setLoading(true);
     setGPhotos([]);
     const apiBase = BACKEND_URL || getApiUrl();
-    console.log('[Photos] Fetching from:', apiBase, '/api/google-photos');
+    
+    // Strategy 1: Try backend API
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
+        const timeout = setTimeout(() => controller.abort(), 10000);
         const res = await fetch(
           `${apiBase}/api/google-photos?album_url=${encodeURIComponent(url)}`,
           { signal: controller.signal }
@@ -99,16 +134,49 @@ export default function PhotosScreen() {
         clearTimeout(timeout);
         if (res.ok) {
           const data = await res.json();
-          setGPhotos(data);
+          if (data.length > 0) {
+            setGPhotos(data);
+            setLoading(false);
+            // Cache for offline use
+            try { await AsyncStorage.setItem('cached_photos', JSON.stringify(data)); } catch {}
+            return;
+          }
+        }
+      } catch (e: any) {
+        console.log(`[Photos] API attempt ${attempt + 1} failed:`, e?.message);
+        if (attempt < retries - 1) await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+    
+    // Strategy 2: Direct client-side scraping (no backend needed)
+    console.log('[Photos] Trying direct scraping...');
+    try {
+      const directPhotos = await scrapeGooglePhotosDirect(url);
+      if (directPhotos.length > 0) {
+        setGPhotos(directPhotos);
+        setLoading(false);
+        try { await AsyncStorage.setItem('cached_photos', JSON.stringify(directPhotos)); } catch {}
+        return;
+      }
+    } catch (e) {
+      console.log('[Photos] Direct scraping failed:', e);
+    }
+    
+    // Strategy 3: Use cached photos
+    console.log('[Photos] Trying cache...');
+    try {
+      const cached = await AsyncStorage.getItem('cached_photos');
+      if (cached) {
+        const cachedData = JSON.parse(cached);
+        if (cachedData.length > 0) {
+          setGPhotos(cachedData);
           setLoading(false);
           return;
         }
-      } catch (e: any) {
-        console.log(`[Photos] Attempt ${attempt + 1} failed:`, e?.message);
-        if (attempt < retries - 1) await new Promise(r => setTimeout(r, 2000));
       }
-    }
-    Alert.alert(t.error, `API: ${apiBase || 'empty'}`);
+    } catch {}
+    
+    Alert.alert(t.error, 'Failed to load photos');
     setLoading(false);
   }, [t]);
 

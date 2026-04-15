@@ -88,3 +88,13 @@ export async function setAsLockScreen(uri: string): Promise<void> {
   if (!WM) return;
   return WM.setAsLockScreen(uri);
 }
+
+export async function startAudioService(): Promise<void> {
+  if (!WM) return;
+  return WM.startAudioService();
+}
+
+export async function stopAudioService(): Promise<void> {
+  if (!WM) return;
+  return WM.stopAudioService();
+}

@@ -13,6 +13,8 @@ import {
   setVideoUri as nativeSetVideoUri,
   setRadioUrl as nativeSetRadioUrl,
   setStationName as nativeSetStationName,
+  startAudioService as nativeStartAudio,
+  stopAudioService as nativeStopAudio,
 } from '../modules/wallpaper';
 
 export type EffectType = 'none' | 'rain' | 'snow' | 'leaves' | 'sparkles' | 'bubbles' | 'fireflies' | 'petals';
@@ -202,6 +204,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isWallpaperModuleAvailable()) {
       nativeSetRadioUrl(station.url).catch(() => {});
       nativeSetStationName(station.name).catch(() => {});
+      nativeStartAudio().catch(() => {});
     }
     await playStationInternal(station);
   }, []);

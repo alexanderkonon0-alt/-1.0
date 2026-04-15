@@ -83,7 +83,8 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
     backgroundColor: 'transparent',
     elevation: 0,
-    height: 60,
+    height: Platform.OS === 'android' ? 70 : 85,
+    paddingBottom: Platform.OS === 'android' ? 10 : 25,
   },
   tabBarBg: {
     flex: 1,
