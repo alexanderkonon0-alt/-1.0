@@ -47,20 +47,34 @@ export default function MusicScreen() {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
         copyToCacheDirectory: true,
+        multiple: true,
       });
-      if (!result.canceled && result.assets?.[0]) {
+      if (!result.canceled && result.assets?.length > 0) {
+        // Play first track immediately
         const asset = result.assets[0];
-        // Play local music using a fake radio station entry
         const localStation: RadioStation = {
-          id: 'local_music',
+          id: 'local_music_' + Date.now(),
           name: asset.name || 'Local Music',
-          description: 'Local file',
+          description: `${result.assets.length} tracks`,
           url: asset.uri,
           genre: 'Local',
-          emoji: '🎵',
+          emoji: '\u{1F3B5}',
         };
         await playStation(localStation);
+        
+        // Save all tracks as playlist
+        const playlist = result.assets.map((a, i) => ({
+          id: `local_${Date.now()}_${i}`,
+          name: a.name || `Track ${i + 1}`,
+          uri: a.uri,
+        }));
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          await AsyncStorage.setItem('local_playlist', JSON.stringify(playlist));
+        } catch {}
+        
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('\u{2705}', `Added ${result.assets.length} track(s)`);
       }
     } catch (e) {
       Alert.alert('Error', String(e));

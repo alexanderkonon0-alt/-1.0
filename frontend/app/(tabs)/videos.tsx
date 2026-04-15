@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { useApp, WallpaperItem } from '../../contexts/AppContext';
 import { getTranslation } from '../../constants/translations';
 import { COLORS } from '../../constants/colors';
+import { setVideoUri, launchWallpaperPicker, isWallpaperModuleAvailable } from '../../modules/wallpaper';
 
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 48) / 2;
@@ -66,6 +67,20 @@ export default function VideosScreen() {
     ]);
   }, [removeWallpaper, t]);
 
+  const setAsVideoWallpaper = useCallback(async (item: WallpaperItem) => {
+    if (!isWallpaperModuleAvailable()) {
+      Alert.alert('Info', 'Video wallpaper requires APK build');
+      return;
+    }
+    try {
+      await setVideoUri(item.uri);
+      await launchWallpaperPicker();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed');
+    }
+  }, []);
+
   const renderItem = ({ item }: { item: WallpaperItem }) => {
     const isActive = currentWallpaper?.id === item.id;
     const thumb = item.thumbnailUri || 'https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?w=400&q=60';
@@ -95,6 +110,9 @@ export default function VideosScreen() {
         <View style={styles.cardActions}>
           <TouchableOpacity testID={`preview-video-${item.id}`} onPress={() => setPreviewVideo(item)} style={styles.actionBtn}>
             <Ionicons name="expand-outline" size={14} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setAsVideoWallpaper(item)} style={[styles.actionBtn, { backgroundColor: 'rgba(21,128,61,0.8)' }]}>
+            <Ionicons name="phone-portrait-outline" size={14} color="#fff" />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>

@@ -717,7 +717,8 @@ public class ScreenLockAccessibilityService extends AccessibilityService {
 const WALLPAPER_XML = `<?xml version="1.0" encoding="utf-8"?>
 <wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
     android:label="Rare Shot Live Wallpaper"
-    android:thumbnail="@mipmap/ic_launcher" />
+    android:thumbnail="@mipmap/ic_launcher"
+    android:settingsActivity="${PACKAGE_NAME}.MainActivity" />
 `;
 
 const DEVICE_ADMIN_XML = `<?xml version="1.0" encoding="utf-8"?>
