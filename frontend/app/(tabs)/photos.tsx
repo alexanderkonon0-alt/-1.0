@@ -213,7 +213,7 @@ export default function PhotosScreen() {
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>{'\u{1F4F7}'} Google Photos</Text>
+          <Text style={styles.headerTitle}>{'\u{1F4F7}'} {t.photos || 'Photos'}</Text>
           <Text style={styles.headerSub}>{gPhotos.length > 0 ? `${gPhotos.length} ${t.photos}` : t.loading}</Text>
         </View>
         <View style={styles.headerActions}>
@@ -397,7 +397,7 @@ export default function PhotosScreen() {
       <Modal visible={editingUrl} transparent animationType="fade" onRequestClose={() => setEditingUrl(false)}>
         <BlurView intensity={50} tint="dark" style={styles.modalOverlay}>
           <View style={[styles.urlEditBox, { marginBottom: insets.bottom + 20 }]}>
-            <Text style={styles.urlEditTitle}>Google Photos URL</Text>
+            <Text style={styles.urlEditTitle}>Album URL</Text>
             <TextInput
               style={styles.urlEditInput} value={editUrlText}
               onChangeText={setEditUrlText} placeholder="https://photos.app.goo.gl/..."

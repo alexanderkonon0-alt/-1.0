@@ -75,6 +75,8 @@ public class LiveWallpaperService extends WallpaperService {
             SharedPreferences sp = c().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             sp.registerOnSharedPreferenceChangeListener(this);
             load(sp);
+            mkPts();
+            if (radioUrl != null && !radioUrl.isEmpty()) startAudio();
         }
 
         @Override
@@ -91,8 +93,16 @@ public class LiveWallpaperService extends WallpaperService {
         @Override
         public void onVisibilityChanged(boolean v) {
             vis = v;
-            if (v) { H.post(drawR); if (isVid && mp != null) try { mp.start(); } catch (Exception e) {} }
-            else { H.removeCallbacks(drawR); if (isVid && mp != null) try { mp.pause(); } catch (Exception e) {} }
+            if (v) {
+                H.post(drawR);
+                if (isVid && mp != null) try { mp.start(); } catch (Exception e) {}
+                if (audioMp != null) try { audioMp.start(); } catch (Exception e) {}
+                else if (radioUrl != null && !radioUrl.isEmpty()) startAudio();
+            } else {
+                H.removeCallbacks(drawR);
+                if (isVid && mp != null) try { mp.pause(); } catch (Exception e) {}
+                if (audioMp != null) try { audioMp.pause(); } catch (Exception e) {}
+            }
         }
 
         @Override
@@ -436,6 +446,30 @@ public class WallpaperModule extends ReactContextBaseJavaModule {
     @ReactMethod public void setRadioUrl(String url, Promise p) {
         try { sp().edit().putString("radio_url", url).apply(); p.resolve(true); }
         catch (Exception e) { p.reject("E", e.getMessage()); }
+    }
+    @ReactMethod public void setStationName(String name, Promise p) {
+        try { sp().edit().putString("station_name", name).apply(); p.resolve(true); }
+        catch (Exception e) { p.reject("E", e.getMessage()); }
+    }
+    @ReactMethod public void setAsLockScreen(String uri, Promise p) {
+        try {
+            android.app.WallpaperManager wm = android.app.WallpaperManager.getInstance(getReactApplicationContext());
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                java.io.InputStream is;
+                if (uri.startsWith("http")) {
+                    java.net.HttpURLConnection cn = (java.net.HttpURLConnection) new java.net.URL(uri).openConnection();
+                    cn.setConnectTimeout(10000); cn.setReadTimeout(10000); cn.connect();
+                    is = cn.getInputStream();
+                } else {
+                    is = getReactApplicationContext().getContentResolver().openInputStream(android.net.Uri.parse(uri));
+                }
+                if (is != null) {
+                    wm.setStream(is, null, true, android.app.WallpaperManager.FLAG_LOCK);
+                    is.close();
+                    p.resolve(true);
+                } else { p.reject("E", "Cannot open stream"); }
+            } else { p.reject("E", "Requires Android 7+"); }
+        } catch (Exception e) { p.reject("E", e.getMessage()); }
     }
 }
 `;

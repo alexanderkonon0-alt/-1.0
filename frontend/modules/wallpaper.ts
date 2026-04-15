@@ -78,3 +78,13 @@ export async function setRadioUrl(url: string): Promise<void> {
   if (!WM) return;
   return WM.setRadioUrl(url);
 }
+
+export async function setStationName(name: string): Promise<void> {
+  if (!WM) return;
+  return WM.setStationName(name);
+}
+
+export async function setAsLockScreen(uri: string): Promise<void> {
+  if (!WM) return;
+  return WM.setAsLockScreen(uri);
+}
