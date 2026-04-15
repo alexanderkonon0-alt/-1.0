@@ -11,6 +11,7 @@ import {
   setWallpaperUris as nativeSetWallpaperUris,
   setWallpaperUri as nativeSetWallpaperUri,
   setVideoUri as nativeSetVideoUri,
+  setRadioUrl as nativeSetRadioUrl,
 } from '../modules/wallpaper';
 
 export type EffectType = 'none' | 'rain' | 'snow' | 'leaves' | 'sparkles' | 'bubbles' | 'fireflies' | 'petals';
@@ -195,6 +196,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       stationIndexRef.current = idx;
       setStationIndex(idx);
       AsyncStorage.setItem('stationIndex', String(idx));
+    }
+    // Sync radio URL to native WallpaperService
+    if (isWallpaperModuleAvailable()) {
+      nativeSetRadioUrl(station.url).catch(() => {});
     }
     await playStationInternal(station);
   }, []);

@@ -73,3 +73,8 @@ export async function lockScreen(): Promise<void> {
   if (!WM) return;
   return WM.lockScreen();
 }
+
+export async function setRadioUrl(url: string): Promise<void> {
+  if (!WM) return;
+  return WM.setRadioUrl(url);
+}

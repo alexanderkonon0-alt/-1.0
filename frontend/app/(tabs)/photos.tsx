@@ -9,13 +9,24 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import Constants from 'expo-constants';
 import { useApp, WallpaperItem } from '../../contexts/AppContext';
 import { getTranslation } from '../../constants/translations';
 import { COLORS } from '../../constants/colors';
 import { GOOGLE_PHOTOS_URL } from '../../constants/radioStations';
 import { setWallpaperUri, launchWallpaperPicker, isWallpaperModuleAvailable } from '../../modules/wallpaper';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+function getApiUrl(): string {
+  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+  if (envUrl && envUrl.length > 0) return envUrl;
+  try {
+    const host = Constants.expoConfig?.hostUri?.split(':')[0];
+    if (host) return `https://${host}`;
+  } catch {}
+  return '';
+}
+
+const BACKEND_URL = getApiUrl();
 const { width: SW } = Dimensions.get('window');
 const COLS = 3;
 const THUMB_SIZE = (SW - 4) / COLS;
@@ -46,6 +57,8 @@ export default function PhotosScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
   const [settingLive, setSettingLive] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const handleSetLiveWallpaper = useCallback(async (uri: string) => {
     if (Platform.OS !== 'android') {
@@ -68,22 +81,33 @@ export default function PhotosScreen() {
     }
   }, [t]);
 
-  const fetchPhotos = useCallback(async (url: string) => {
+  const fetchPhotos = useCallback(async (url: string, retries = 3) => {
     setLoading(true);
     setGPhotos([]);
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/google-photos?album_url=${encodeURIComponent(url)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setGPhotos(data);
-      } else {
-        Alert.alert(t.error, 'Could not load album.');
+    const apiBase = BACKEND_URL || getApiUrl();
+    console.log('[Photos] Fetching from:', apiBase, '/api/google-photos');
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        const res = await fetch(
+          `${apiBase}/api/google-photos?album_url=${encodeURIComponent(url)}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = await res.json();
+          setGPhotos(data);
+          setLoading(false);
+          return;
+        }
+      } catch (e: any) {
+        console.log(`[Photos] Attempt ${attempt + 1} failed:`, e?.message);
+        if (attempt < retries - 1) await new Promise(r => setTimeout(r, 2000));
       }
-    } catch {
-      Alert.alert(t.error, 'No server connection.');
-    } finally {
-      setLoading(false);
     }
+    Alert.alert(t.error, `API: ${apiBase || 'empty'}`);
+    setLoading(false);
   }, [t]);
 
   useEffect(() => { fetchPhotos(albumUrl); }, []);
@@ -121,24 +145,57 @@ export default function PhotosScreen() {
     ]);
   }, [gPhotos, wallpapers, addWallpaper, t]);
 
+  const toggleSelect = useCallback((url: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url); else next.add(url);
+      return next;
+    });
+  }, []);
+
+  const addSelectedWallpapers = useCallback(async () => {
+    let count = 0;
+    for (const url of selected) {
+      const photo = gPhotos.find(p => p.url === url);
+      if (photo && !wallpapers.some(w => w.uri === photo.url)) {
+        await addWallpaper({ id: `gp_${Date.now()}_${Math.random().toString(36).slice(2)}`, uri: photo.url, type: 'photo', name: photo.name });
+        count++;
+      }
+    }
+    setSelected(new Set());
+    setSelectMode(false);
+    if (count > 0) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [selected, gPhotos, wallpapers, addWallpaper]);
+
   const renderItem = useCallback(({ item }: { item: typeof gPhotos[0] }) => {
     const isActive = currentWallpaper?.uri === item.url;
+    const isSel = selected.has(item.url);
     return (
       <TouchableOpacity
-        style={[styles.thumb, isActive && styles.thumbActive]}
-        onPress={() => addAsWallpaper(item)}
-        onLongPress={() => setPreview(item)}
+        style={[styles.thumb, isActive && styles.thumbActive, selectMode && isSel && { borderWidth: 2.5, borderColor: COLORS.gold }]}
+        onPress={() => selectMode ? toggleSelect(item.url) : addAsWallpaper(item)}
+        onLongPress={() => { if (!selectMode) { setSelectMode(true); toggleSelect(item.url); } else setPreview(item); }}
         activeOpacity={0.82}
       >
         <Image source={{ uri: item.thumbnail }} style={styles.thumbImg} contentFit="cover" />
-        {isActive && (
+        {isActive && !selectMode && (
           <View style={styles.activeOverlay}>
             <Ionicons name="checkmark-circle" size={28} color={COLORS.accent} />
           </View>
         )}
+        {selectMode && isSel && (
+          <View style={[styles.activeOverlay, { backgroundColor: 'rgba(251,191,36,0.25)' }]}>            
+            <Ionicons name="checkmark-circle" size={28} color={COLORS.gold} />
+          </View>
+        )}
+        {selectMode && (
+          <View style={{ position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: isSel ? COLORS.gold : 'rgba(0,0,0,0.4)', borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+            {isSel && <Ionicons name="checkmark" size={14} color="#000" />}
+          </View>
+        )}
       </TouchableOpacity>
     );
-  }, [currentWallpaper, addAsWallpaper]);
+  }, [currentWallpaper, addAsWallpaper, selectMode, selected, toggleSelect]);
 
   const confirmUrl = useCallback(() => {
     setAlbumUrl(editUrlText); setEditingUrl(false); fetchPhotos(editUrlText);
@@ -158,23 +215,47 @@ export default function PhotosScreen() {
           <Text style={styles.headerSub}>{gPhotos.length > 0 ? `${gPhotos.length} ${t.photos}` : t.loading}</Text>
         </View>
         <View style={styles.headerActions}>
-          {gPhotos.length > 0 && (
-            <TouchableOpacity style={styles.iconBtn} onPress={addAllWallpapers}>
-              <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
-                <Ionicons name="add-circle-outline" size={22} color={COLORS.accent} />
-              </BlurView>
-            </TouchableOpacity>
+          {selectMode ? (
+            <>
+              <TouchableOpacity style={styles.iconBtn} onPress={addSelectedWallpapers}>
+                <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
+                  <Ionicons name="checkmark-done" size={20} color={COLORS.gold} />
+                </BlurView>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => { setSelectMode(false); setSelected(new Set()); }}>
+                <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
+                  <Ionicons name="close" size={20} color={COLORS.textMuted} />
+                </BlurView>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              {gPhotos.length > 0 && (
+                <TouchableOpacity style={styles.iconBtn} onPress={() => setSelectMode(true)}>
+                  <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
+                    <Ionicons name="checkbox-outline" size={20} color={COLORS.accent} />
+                  </BlurView>
+                </TouchableOpacity>
+              )}
+              {gPhotos.length > 0 && (
+                <TouchableOpacity style={styles.iconBtn} onPress={addAllWallpapers}>
+                  <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
+                    <Ionicons name="add-circle-outline" size={22} color={COLORS.accent} />
+                  </BlurView>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.iconBtn} onPress={() => fetchPhotos(albumUrl)}>
+                <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
+                  <Ionicons name="refresh" size={20} color={COLORS.textSecondary} />
+                </BlurView>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowSettings(true)}>
+                <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
+                  <Ionicons name="options-outline" size={20} color={COLORS.textSecondary} />
+                </BlurView>
+              </TouchableOpacity>
+            </>
           )}
-          <TouchableOpacity style={styles.iconBtn} onPress={() => fetchPhotos(albumUrl)}>
-            <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
-              <Ionicons name="refresh" size={20} color={COLORS.textSecondary} />
-            </BlurView>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setShowSettings(true)}>
-            <BlurView intensity={14} tint="dark" style={styles.iconBtnBlur}>
-              <Ionicons name="options-outline" size={20} color={COLORS.textSecondary} />
-            </BlurView>
-          </TouchableOpacity>
         </View>
       </View>
 

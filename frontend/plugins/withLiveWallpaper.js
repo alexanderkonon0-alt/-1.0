@@ -64,6 +64,8 @@ public class LiveWallpaperService extends WallpaperService {
         private long lastChgMs;
         private long tapMs;
         private float tapX, tapY;
+        private android.media.MediaPlayer audioMp;
+        private String radioUrl;
         private final Runnable drawR = () -> doDraw();
 
         @Override
@@ -83,6 +85,7 @@ public class LiveWallpaperService extends WallpaperService {
                 .unregisterOnSharedPreferenceChangeListener(this); } catch (Exception e) {}
             killVid();
             killBmp();
+            stopAudio();
         }
 
         @Override
@@ -131,7 +134,27 @@ public class LiveWallpaperService extends WallpaperService {
                 if (isVid && vidUri != null) initVid(); else { killVid(); if (curUri != null) loadImg(curUri); }
             }
             if ("effect_type".equals(k) || "effect_intensity".equals(k)) mkPts();
+            if ("radio_url".equals(k)) startAudio();
         }
+
+        private void startAudio() {
+            stopAudio();
+            if (radioUrl == null || radioUrl.isEmpty()) return;
+            new Thread(() -> {
+                try {
+                    audioMp = new android.media.MediaPlayer();
+                    audioMp.setDataSource(radioUrl);
+                    audioMp.setAudioAttributes(new android.media.AudioAttributes.Builder()
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA).build());
+                    audioMp.setLooping(false);
+                    audioMp.setOnPreparedListener(p -> { if (vis) p.start(); });
+                    audioMp.setOnErrorListener((p, w, e) -> { stopAudio(); return true; });
+                    audioMp.prepareAsync();
+                } catch (Exception e) { stopAudio(); }
+            }).start();
+        }
+        private void stopAudio() { if (audioMp != null) { try { audioMp.stop(); } catch (Exception e) {} try { audioMp.release(); } catch (Exception e) {} audioMp = null; } }
 
         private void load(SharedPreferences sp) {
             curUri = sp.getString("wallpaper_uri", null);
@@ -144,6 +167,7 @@ public class LiveWallpaperService extends WallpaperService {
             autoSec = sp.getInt("auto_change_interval", 300);
             uriList.clear();
             try { JSONArray a = new JSONArray(sp.getString("wallpaper_uris", "[]")); for (int i = 0; i < a.length(); i++) uriList.add(a.getString(i)); } catch (Exception e) {}
+            radioUrl = sp.getString("radio_url", null);
         }
 
         private void loadImg(final String uri) {
@@ -408,6 +432,10 @@ public class WallpaperModule extends ReactContextBaseJavaModule {
             if (d != null && d.isAdminActive(cn)) { d.lockNow(); p.resolve(true); }
             else p.reject("NA", "Device admin not enabled");
         } catch (Exception e) { p.reject("E", e.getMessage()); }
+    }
+    @ReactMethod public void setRadioUrl(String url, Promise p) {
+        try { sp().edit().putString("radio_url", url).apply(); p.resolve(true); }
+        catch (Exception e) { p.reject("E", e.getMessage()); }
     }
 }
 `;

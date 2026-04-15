@@ -144,36 +144,6 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* Home Screen Widgets Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📱 Виджеты на главном экране</Text>
-          <Text style={[styles.sectionTitle, { fontSize: 11, color: COLORS.textMuted, marginTop: -6, fontWeight: '400' }]}>
-            Долгое нажатие на рабочем столе → «Виджеты» → «Rare Shot»
-          </Text>
-          <View style={styles.widgetSection}>
-            {[
-              { icon: '🎵', title: 'Музыкальный виджет (4×1)', desc: 'Управление радиостанцией + Play/Pause/Next' },
-              { icon: '🖼', title: 'Виджет обоев (2×2)', desc: 'Превью текущих обоев + кнопка смены' },
-              { icon: '✨', title: 'Виджет эффектов (2×1)', desc: 'Переключение частиц: дождь / снег / листья' },
-            ].map((w, i) => (
-              <View key={i} style={styles.widgetCard}>
-                <BlurView intensity={12} tint="dark" style={styles.widgetCardBlur}>
-                  <View style={styles.widgetCardRow}>
-                    <View style={styles.widgetCardIcon}>
-                      <Text style={{ fontSize: 20 }}>{w.icon}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.widgetCardTitle}>{w.title}</Text>
-                      <Text style={styles.widgetCardDesc}>{w.desc}</Text>
-                    </View>
-                    <Ionicons name="checkmark-circle" size={18} color={COLORS.accent} />
-                  </View>
-                </BlurView>
-              </View>
-            ))}
-          </View>
-        </View>
-
         {/* Social Links Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t.social}</Text>
@@ -238,12 +208,12 @@ export default function SettingsScreen() {
           <TouchableOpacity testID="accessibility-btn" onPress={openAccessibilitySettings} style={styles.row}>
             <BlurView intensity={15} tint="dark" style={styles.rowBlur}>
               <View style={styles.rowInner}>
-                <Text style={{ fontSize: 22 }}>♿</Text>
+                <Text style={{ fontSize: 22 }}>🔒</Text>
                 <View style={styles.rowTextArea}>
                   <Text style={styles.rowLabel}>{t.accessibility}</Text>
-                  <Text style={styles.rowDesc}>{t.doubleTapInfo}</Text>
+                  <Text style={styles.rowDesc}>Double-tap on wallpaper to lock screen</Text>
                 </View>
-                <Ionicons name="settings-outline" size={16} color={COLORS.accent} />
+                <Ionicons name="shield-checkmark-outline" size={16} color={COLORS.accent} />
               </View>
             </BlurView>
           </TouchableOpacity>
