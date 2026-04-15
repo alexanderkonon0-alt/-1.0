@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Alert,
   Modal, TextInput, Dimensions, Platform,
@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useApp, WallpaperItem } from '../../contexts/AppContext';
 import { getTranslation } from '../../constants/translations';
 import { COLORS } from '../../constants/colors';
@@ -29,6 +30,9 @@ export default function VideosScreen() {
   const [urlText, setUrlText] = useState('');
   const [adding, setAdding] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<WallpaperItem | null>(null);
+  const videoPlayer = useVideoPlayer(previewVideo?.uri || null, player => {
+    if (previewVideo) { player.loop = true; player.play(); }
+  });
 
   const pickFromGallery = useCallback(async () => {
     try {
@@ -174,17 +178,24 @@ export default function VideosScreen() {
             <View style={styles.previewBoxInner}>
               <Text style={styles.previewTitle} numberOfLines={1}>{previewVideo?.name}</Text>
               <View style={styles.previewThumb}>
-                <Image source={{ uri: previewVideo?.thumbnailUri || previewVideo?.uri }} style={styles.previewImg} contentFit="cover" />
-                <View style={styles.playOverlayLarge}>
-                  <View style={styles.playCircleLarge}>
-                    <Ionicons name="play" size={36} color={COLORS.white} />
-                  </View>
-                </View>
+                {previewVideo ? (
+                  <VideoView
+                    player={videoPlayer}
+                    style={styles.previewImg}
+                    contentFit="cover"
+                    nativeControls={true}
+                  />
+                ) : null}
               </View>
               <Text style={styles.previewUri} numberOfLines={2}>{previewVideo?.uri}</Text>
-              <TouchableOpacity testID="close-preview-btn" onPress={() => setPreviewVideo(null)} style={styles.closeBtn}>
-                <Text style={styles.closeBtnText}>{t.cancel}</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <TouchableOpacity onPress={() => setAsVideoWallpaper(previewVideo!)} style={[styles.closeBtn, { flex: 1, backgroundColor: 'rgba(21,128,61,0.8)' }]}>
+                  <Text style={[styles.closeBtnText, { color: '#fff' }]}>Set as Wallpaper</Text>
+                </TouchableOpacity>
+                <TouchableOpacity testID="close-preview-btn" onPress={() => setPreviewVideo(null)} style={[styles.closeBtn, { flex: 1 }]}>
+                  <Text style={styles.closeBtnText}>{t.cancel}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </BlurView>
         </View>
