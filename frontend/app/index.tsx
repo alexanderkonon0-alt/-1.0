@@ -70,13 +70,13 @@ export default function SplashScreen() {
       <Animated.View style={[styles.ring, ringStyle]} />
       <Animated.View style={[styles.logoCircle, logoStyle]}>
         <LinearGradient colors={['rgba(21,128,61,0.9)', 'rgba(5,46,22,0.95)']} style={styles.logoGrad}>
-          <Text style={styles.logoLeaf}>{'\u{1F33F}'}</Text>
-          <Text style={styles.logoStars}>{'\u2726'} {'\u2726'} {'\u2726'}</Text>
-          <Text style={styles.logoCam}>{'\u25CE'}</Text>
+          <Text style={styles.logoLeaf}>{String.fromCodePoint(0x1F3B5)}</Text>
+          <Text style={styles.logoStars}>{String.fromCodePoint(0x2726)} {String.fromCodePoint(0x2726)} {String.fromCodePoint(0x2726)}</Text>
+          <Text style={styles.logoCam}>{String.fromCodePoint(0x25CE)}</Text>
         </LinearGradient>
       </Animated.View>
-      <Animated.Text style={[styles.appName, titleStyle]}>RARE SHOT</Animated.Text>
-      <Animated.Text style={[styles.appSubtitle, subtitleStyle]}>LIVE WALLPAPER</Animated.Text>
+      <Animated.Text style={[styles.appName, titleStyle]}>RELAX SOUND</Animated.Text>
+      <Animated.Text style={[styles.appSubtitle, subtitleStyle]}>LIVE WALLPAPERS</Animated.Text>
     </LinearGradient>
   );
 }
@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
   logoStars: { fontSize: 10, color: COLORS.gold, letterSpacing: 4, marginBottom: 2 },
   logoCam: { fontSize: 22, color: COLORS.accent },
   appName: {
-    fontSize: 32, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: 6, marginBottom: 8,
+    fontSize: 28, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: 5, marginBottom: 8,
     textShadowColor: COLORS.accent, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 12,
   },
-  appSubtitle: { fontSize: 13, fontWeight: '400', color: COLORS.textSecondary, letterSpacing: 5, textTransform: 'uppercase' },
+  appSubtitle: { fontSize: 13, fontWeight: '400', color: COLORS.textSecondary, letterSpacing: 4, textTransform: 'uppercase' },
 });

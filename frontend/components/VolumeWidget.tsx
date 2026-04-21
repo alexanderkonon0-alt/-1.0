@@ -19,7 +19,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const SLIDER_H = 5;
-const THUMB_SIZE = 20;
+const THUMB_SIZE = 22;
 
 export const VolumeWidget: React.FC = () => {
   const {
@@ -29,54 +29,62 @@ export const VolumeWidget: React.FC = () => {
   } = useApp();
 
   const insets = useSafeAreaInsets();
-  const TAB_BAR_H = 60 + insets.bottom;
-  const WIDGET_BOTTOM = TAB_BAR_H + 8;
+  const TAB_BAR_H = 70 + insets.bottom;
+  const WIDGET_BOTTOM = TAB_BAR_H + 6;
 
   const [trackWidth, setTrackWidth] = useState(200);
-  const thumbX = useSharedValue(volume * Math.max(1, trackWidth - THUMB_SIZE));
-  const sliderVolRef = useRef(volume);
+
+  // Store actual thumb x position as shared value
+  const thumbX = useSharedValue(volume * Math.max(1, 200 - THUMB_SIZE));
+
+  // Capture starting thumb position on gesture begin
+  const startXRef = useRef(0);
 
   const haptic = useCallback(() => {
     try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
   }, []);
 
   const updateVol = useCallback((v: number) => {
-    sliderVolRef.current = v;
     setVolume(v);
   }, [setVolume]);
 
+  // Keep thumb in sync when volume changes externally (e.g. from AppContext)
   React.useEffect(() => {
-    const tw = trackWidth - THUMB_SIZE;
-    const newX = volume * Math.max(1, tw);
-    thumbX.value = withSpring(newX, { damping: 20, stiffness: 200 });
+    const tw = Math.max(1, trackWidth - THUMB_SIZE);
+    thumbX.value = withSpring(volume * tw, { damping: 20, stiffness: 200 });
   }, [volume, trackWidth]);
 
   const panGesture = Gesture.Pan()
-    .minDistance(1)
-    .onUpdate((e) => {
-      const tw = trackWidth - THUMB_SIZE;
-      const startX = sliderVolRef.current * tw;
-      const newX = Math.max(0, Math.min(tw, startX + e.translationX));
-      thumbX.value = newX;
-      runOnJS(updateVol)(newX / Math.max(1, tw));
+    .minDistance(0)
+    .onBegin(() => {
+      // Capture exact thumb position at gesture start
+      startXRef.current = thumbX.value;
     })
-    .onEnd(() => runOnJS(haptic)());
+    .onUpdate((e) => {
+      const tw = Math.max(1, trackWidth - THUMB_SIZE);
+      const newX = Math.max(0, Math.min(tw, startXRef.current + e.translationX));
+      thumbX.value = newX;
+      runOnJS(updateVol)(newX / tw);
+    })
+    .onEnd(() => {
+      runOnJS(haptic)();
+    });
 
   const tapGesture = Gesture.Tap().onEnd((e) => {
-    const tw = trackWidth - THUMB_SIZE;
+    const tw = Math.max(1, trackWidth - THUMB_SIZE);
     const newX = Math.max(0, Math.min(tw, e.x - THUMB_SIZE / 2));
     thumbX.value = withSpring(newX, { damping: 20, stiffness: 300 });
-    runOnJS(updateVol)(newX / Math.max(1, tw));
+    runOnJS(updateVol)(newX / tw);
     runOnJS(haptic)();
   });
 
-  const sliderGesture = Gesture.Simultaneous(panGesture, tapGesture);
+  const sliderGesture = Gesture.Exclusive(panGesture, tapGesture);
 
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: thumbX.value }],
   }));
   const fillStyle = useAnimatedStyle(() => ({
-    width: Math.max(0, thumbX.value + THUMB_SIZE / 2),
+    width: Math.max(4, thumbX.value + THUMB_SIZE / 2),
   }));
 
   const volIcon = volume === 0 ? 'volume-mute' : volume < 0.4 ? 'volume-low' : volume < 0.75 ? 'volume-medium' : 'volume-high';
@@ -146,7 +154,14 @@ export const VolumeWidget: React.FC = () => {
             <GestureDetector gesture={sliderGesture}>
               <View
                 style={styles.sliderHitArea}
-                onLayout={(e) => { setTrackWidth(e.nativeEvent.layout.width); }}
+                onLayout={(e) => {
+                  const w = e.nativeEvent.layout.width;
+                  if (w > 0 && w !== trackWidth) {
+                    setTrackWidth(w);
+                    // Re-sync thumb position on layout change
+                    thumbX.value = volume * Math.max(1, w - THUMB_SIZE);
+                  }
+                }}
               >
                 <View style={styles.trackBg} />
                 <Animated.View style={[styles.trackFill, fillStyle]} />
@@ -187,8 +202,8 @@ const styles = StyleSheet.create({
   collapsedName: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', flex: 1, flexShrink: 1 },
   expandedContainer: {
     position: 'absolute',
-    left: 20,
-    right: 20,
+    left: 16,
+    right: 16,
     zIndex: 60,
     borderRadius: 22,
     overflow: 'hidden',
@@ -200,7 +215,7 @@ const styles = StyleSheet.create({
   },
   expandedBlur: { borderRadius: 22, overflow: 'hidden' },
   expandedInner: {
-    backgroundColor: 'rgba(3, 18, 8, 0.82)',
+    backgroundColor: 'rgba(3, 18, 8, 0.88)',
     borderWidth: 1,
     borderColor: COLORS.borderGreen,
     borderRadius: 22,
@@ -221,14 +236,14 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
   },
   volumeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sliderHitArea: { flex: 1, height: 32, justifyContent: 'center', position: 'relative' },
+  sliderHitArea: { flex: 1, height: 36, justifyContent: 'center', position: 'relative' },
   trackBg: { position: 'absolute', left: 0, right: 0, height: SLIDER_H, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: SLIDER_H / 2 },
   trackFill: { position: 'absolute', left: 0, height: SLIDER_H, backgroundColor: COLORS.accent, borderRadius: SLIDER_H / 2, minWidth: 4 },
   thumb: {
     position: 'absolute', width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: THUMB_SIZE / 2,
-    backgroundColor: COLORS.white, top: (32 - THUMB_SIZE) / 2,
+    backgroundColor: COLORS.white, top: (36 - THUMB_SIZE) / 2,
     shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 6, elevation: 5,
     borderWidth: 2, borderColor: COLORS.accent,
   },
-  volPct: { color: COLORS.textMuted, fontSize: 10, width: 30, textAlign: 'right', fontWeight: '600' },
+  volPct: { color: COLORS.textMuted, fontSize: 10, width: 32, textAlign: 'right', fontWeight: '600' },
 });

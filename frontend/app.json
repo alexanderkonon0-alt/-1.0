@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Rare Shot Live Wallpaper",
-    "slug": "rareshot-wallpaper",
+    "name": "Relax Sound Live Wallpapers",
+    "slug": "relax-sound-wallpaper",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "rareshotlw",
+    "scheme": "relaxsoundlw",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
@@ -17,8 +17,8 @@
       }
     },
     "android": {
-      "package": "com.rareshot.livewallpaper",
-      "versionCode": 1,
+      "package": "com.relaxsound.livewallpaper",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#030e06"
@@ -34,6 +34,7 @@
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
         "android.permission.WAKE_LOCK",
@@ -62,8 +63,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow Rare Shot to access your photos to use as wallpapers",
-          "savePhotosPermission": "Allow Rare Shot to save wallpaper to your photos",
+          "photosPermission": "Allow Relax Sound to access your photos to use as wallpapers",
+          "savePhotosPermission": "Allow Relax Sound to save wallpaper to your photos",
           "isAccessMediaLocationEnabled": true
         }
       ],
@@ -82,6 +83,6 @@
         "projectId": "fa476e81-7170-410b-82dc-1771f5492cd5"
       }
     },
-    "owner": "ninset24"
+    "owner": "alexander30"
   }
 }

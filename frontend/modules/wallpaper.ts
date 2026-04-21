@@ -14,6 +14,10 @@ export async function setWallpaperUri(uri: string): Promise<void> {
   if (!WM) return;
   return WM.setWallpaperUri(uri);
 }
+export const nativeSetWallpaper = (uri: string): void => {
+  if (!WM) return;
+  WM.setWallpaperUri(uri).catch(() => {});
+};
 
 // ── Video wallpaper ──
 export async function setVideoUri(uri: string): Promise<void> {
@@ -27,6 +31,16 @@ export async function setWallpaperUris(uris: string[]): Promise<void> {
   return WM.setWallpaperUris(uris);
 }
 
+// ── Navigate wallpapers natively ──
+export const nativeNextWallpaper = (): void => {
+  if (!WM) return;
+  WM.nextWallpaper?.().catch(() => {});
+};
+export const nativePrevWallpaper = (): void => {
+  if (!WM) return;
+  WM.prevWallpaper?.().catch(() => {});
+};
+
 // ── Particle effect settings ──
 export async function setEffect(
   type: string,
@@ -36,6 +50,16 @@ export async function setEffect(
   if (!WM) return;
   return WM.setEffect(type, intensity, speed);
 }
+export const nativeSetEffect = (type: string, intensity: number, speed: number): void => {
+  if (!WM) return;
+  WM.setEffect(type, intensity, speed).catch(() => {});
+};
+
+// ── Volume control ──
+export const nativeSetVolume = (volume: number): void => {
+  if (!WM) return;
+  WM.setVolume?.(volume).catch(() => {});
+};
 
 // ── Auto-change settings ──
 export async function setAutoChange(
@@ -89,12 +113,26 @@ export async function setAsLockScreen(uri: string): Promise<void> {
   return WM.setAsLockScreen(uri);
 }
 
-export async function startAudioService(): Promise<void> {
+export async function startAudioService(url?: string, stationName?: string): Promise<void> {
   if (!WM) return;
+  if (url) {
+    await WM.setRadioUrl(url).catch(() => {});
+  }
+  if (stationName) {
+    await WM.setStationName(stationName).catch(() => {});
+  }
   return WM.startAudioService();
 }
+export const nativeStartAudioService = (url: string, stationName: string): void => {
+  if (!WM) return;
+  startAudioService(url, stationName).catch(() => {});
+};
 
 export async function stopAudioService(): Promise<void> {
   if (!WM) return;
   return WM.stopAudioService();
 }
+export const nativeStopAudioService = (): void => {
+  if (!WM) return;
+  WM.stopAudioService().catch(() => {});
+};

@@ -10,26 +10,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import { useApp, WallpaperItem } from '../../contexts/AppContext';
 import { getTranslation } from '../../constants/translations';
 import { COLORS } from '../../constants/colors';
 import { GOOGLE_PHOTOS_URL } from '../../constants/radioStations';
 import { setWallpaperUri, launchWallpaperPicker, isWallpaperModuleAvailable } from '../../modules/wallpaper';
 
-const HARDCODED_BACKEND = 'https://russian-translator-5.preview.emergentagent.com';
-
-function getApiUrl(): string {
-  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
-  if (envUrl && envUrl.length > 0) return envUrl;
-  try {
-    const host = Constants.expoConfig?.hostUri?.split(':')[0];
-    if (host) return `https://${host}`;
-  } catch {}
-  return HARDCODED_BACKEND;
-}
-
-const BACKEND_URL = getApiUrl();
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://sound-wallpaper-dev.preview.emergentagent.com';
 
 // Client-side Google Photos scraper (no backend needed)
 async function scrapeGooglePhotosDirect(albumUrl: string): Promise<{ url: string; thumbnail: string; name: string }[]> {
@@ -59,10 +46,10 @@ async function scrapeGooglePhotosDirect(albumUrl: string): Promise<{ url: string
     }));
     return photos;
   } catch (e) {
-    console.log('[Photos] Direct scrape failed:', e);
     return [];
   }
 }
+
 const { width: SW } = Dimensions.get('window');
 const COLS = 3;
 const THUMB_SIZE = (SW - 4) / COLS;
@@ -120,7 +107,6 @@ export default function PhotosScreen() {
   const fetchPhotos = useCallback(async (url: string, retries = 3) => {
     setLoading(true);
     setGPhotos([]);
-    const apiBase = BACKEND_URL || getApiUrl();
     
     // Strategy 1: Try backend API
     for (let attempt = 0; attempt < retries; attempt++) {
@@ -128,7 +114,7 @@ export default function PhotosScreen() {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
         const res = await fetch(
-          `${apiBase}/api/google-photos?album_url=${encodeURIComponent(url)}`,
+          `${BACKEND_URL}/api/google-photos?album_url=${encodeURIComponent(url)}`,
           { signal: controller.signal }
         );
         clearTimeout(timeout);
@@ -137,19 +123,16 @@ export default function PhotosScreen() {
           if (data.length > 0) {
             setGPhotos(data);
             setLoading(false);
-            // Cache for offline use
             try { await AsyncStorage.setItem('cached_photos', JSON.stringify(data)); } catch {}
             return;
           }
         }
       } catch (e: any) {
-        console.log(`[Photos] API attempt ${attempt + 1} failed:`, e?.message);
         if (attempt < retries - 1) await new Promise(r => setTimeout(r, 1500));
       }
     }
     
-    // Strategy 2: Direct client-side scraping (no backend needed)
-    console.log('[Photos] Trying direct scraping...');
+    // Strategy 2: Direct client-side scraping
     try {
       const directPhotos = await scrapeGooglePhotosDirect(url);
       if (directPhotos.length > 0) {
@@ -158,12 +141,9 @@ export default function PhotosScreen() {
         try { await AsyncStorage.setItem('cached_photos', JSON.stringify(directPhotos)); } catch {}
         return;
       }
-    } catch (e) {
-      console.log('[Photos] Direct scraping failed:', e);
-    }
+    } catch (e) {}
     
     // Strategy 3: Use cached photos
-    console.log('[Photos] Trying cache...');
     try {
       const cached = await AsyncStorage.getItem('cached_photos');
       if (cached) {
@@ -254,7 +234,7 @@ export default function PhotosScreen() {
           </View>
         )}
         {selectMode && isSel && (
-          <View style={[styles.activeOverlay, { backgroundColor: 'rgba(251,191,36,0.25)' }]}>            
+          <View style={[styles.activeOverlay, { backgroundColor: 'rgba(251,191,36,0.25)' }]}>
             <Ionicons name="checkmark-circle" size={28} color={COLORS.gold} />
           </View>
         )}
@@ -281,7 +261,7 @@ export default function PhotosScreen() {
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>{'\u{1F4F7}'} {t.photos || 'Photos'}</Text>
+          <Text style={styles.headerTitle}>{String.fromCodePoint(0x1F4F7)} {t.photos || 'Photos'}</Text>
           <Text style={styles.headerSub}>{gPhotos.length > 0 ? `${gPhotos.length} ${t.photos}` : t.loading}</Text>
         </View>
         <View style={styles.headerActions}>
@@ -337,7 +317,6 @@ export default function PhotosScreen() {
         </BlurView>
       </TouchableOpacity>
 
-      {/* Auto-change bar */}
       <View style={styles.autoBar}>
         <View style={styles.autoBarLeft}>
           <Ionicons name="timer-outline" size={16} color={autoChange ? COLORS.accent : COLORS.textMuted} />
@@ -384,56 +363,41 @@ export default function PhotosScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyIcon}>{'\u{1F4F7}'}</Text>
+              <Text style={styles.emptyIcon}>{String.fromCodePoint(0x1F4F7)}</Text>
               <Text style={styles.emptyText}>{t.noWallpapers}</Text>
             </View>
           }
         />
       )}
 
-      {/* Settings modal */}
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
         <BlurView intensity={40} tint="dark" style={styles.modalOverlay}>
           <View style={[styles.settingsBox, { paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.settingsHeader}>
-              <Text style={styles.settingsTitle}>{'\u2699\uFE0F'} {t.settings}</Text>
+              <Text style={styles.settingsTitle}>{String.fromCodePoint(0x2699, 0xFE0F)} {t.settings}</Text>
               <TouchableOpacity onPress={() => setShowSettings(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
-
             <View style={styles.settingsSection}>
               <Text style={styles.settingsSectionTitle}>{t.autoChange}</Text>
               <View style={styles.settingsRow}>
                 <Text style={styles.settingsLabel}>{t.autoChange}</Text>
-                <Switch
-                  value={autoChange}
-                  onValueChange={setAutoChange}
-                  trackColor={{ false: COLORS.glass, true: COLORS.accentDim }}
-                  thumbColor={autoChange ? COLORS.accent : COLORS.textMuted}
-                />
+                <Switch value={autoChange} onValueChange={setAutoChange} trackColor={{ false: COLORS.glass, true: COLORS.accentDim }} thumbColor={autoChange ? COLORS.accent : COLORS.textMuted} />
               </View>
               {autoChange && (
                 <>
                   <Text style={styles.intervalLabel}>{t.interval}: {formatInterval(autoChangeInterval)}</Text>
                   <View style={styles.intervalRow}>
                     {INTERVALS.map(iv => (
-                      <TouchableOpacity
-                        key={iv.value}
-                        style={[styles.intervalBtn, autoChangeInterval === iv.value && styles.intervalBtnActive]}
-                        onPress={() => { setAutoChangeInterval(iv.value); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                      >
-                        <Text style={[styles.intervalBtnText, autoChangeInterval === iv.value && styles.intervalBtnTextActive]}>
-                          {iv.label}
-                        </Text>
+                      <TouchableOpacity key={iv.value} style={[styles.intervalBtn, autoChangeInterval === iv.value && styles.intervalBtnActive]} onPress={() => { setAutoChangeInterval(iv.value); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                        <Text style={[styles.intervalBtnText, autoChangeInterval === iv.value && styles.intervalBtnTextActive]}>{iv.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
-                  <Text style={styles.settingsHint}>{t.cyclic}</Text>
                 </>
               )}
             </View>
-
             <View style={styles.settingsSection}>
               <Text style={styles.settingsSectionTitle}>{t.currentWallpaper} ({wallpapers.filter(w => w.type === 'photo').length})</Text>
               <FlatList
@@ -444,14 +408,8 @@ export default function PhotosScreen() {
                 renderItem={({ item }) => (
                   <View style={styles.myWallThumb}>
                     <Image source={{ uri: item.uri }} style={styles.myWallImg} contentFit="cover" />
-                    {currentWallpaper?.id === item.id && (
-                      <View style={styles.myWallActive}>
-                        <Ionicons name="checkmark" size={12} color="#000" />
-                      </View>
-                    )}
-                    <TouchableOpacity style={styles.myWallDelete} onPress={() => removeWallpaper(item.id)}>
-                      <Ionicons name="trash-outline" size={12} color={COLORS.textMuted} />
-                    </TouchableOpacity>
+                    {currentWallpaper?.id === item.id && (<View style={styles.myWallActive}><Ionicons name="checkmark" size={12} color="#000" /></View>)}
+                    <TouchableOpacity style={styles.myWallDelete} onPress={() => removeWallpaper(item.id)}><Ionicons name="trash-outline" size={12} color={COLORS.textMuted} /></TouchableOpacity>
                   </View>
                 )}
                 ListEmptyComponent={<Text style={styles.settingsLabel}>{t.noWallpapers}</Text>}
@@ -461,31 +419,21 @@ export default function PhotosScreen() {
         </BlurView>
       </Modal>
 
-      {/* URL edit modal */}
       <Modal visible={editingUrl} transparent animationType="fade" onRequestClose={() => setEditingUrl(false)}>
         <BlurView intensity={50} tint="dark" style={styles.modalOverlay}>
           <View style={[styles.urlEditBox, { marginBottom: insets.bottom + 20 }]}>
             <Text style={styles.urlEditTitle}>Album URL</Text>
-            <TextInput
-              style={styles.urlEditInput} value={editUrlText}
-              onChangeText={setEditUrlText} placeholder="https://photos.app.goo.gl/..."
-              placeholderTextColor={COLORS.textMuted} autoCapitalize="none" keyboardType="url" autoFocus
-            />
+            <TextInput style={styles.urlEditInput} value={editUrlText} onChangeText={setEditUrlText} placeholder="https://photos.app.goo.gl/..." placeholderTextColor={COLORS.textMuted} autoCapitalize="none" keyboardType="url" autoFocus />
             <View style={styles.urlEditBtns}>
-              <TouchableOpacity style={styles.urlEditCancel} onPress={() => setEditingUrl(false)}>
-                <Text style={styles.urlEditCancelText}>{t.cancel}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.urlEditCancel} onPress={() => setEditingUrl(false)}><Text style={styles.urlEditCancelText}>{t.cancel}</Text></TouchableOpacity>
               <TouchableOpacity style={styles.urlEditConfirm} onPress={confirmUrl}>
-                <LinearGradient colors={[COLORS.primaryLight, COLORS.primary]} style={styles.urlEditConfirmGrad}>
-                  <Text style={styles.urlEditConfirmText}>{t.add}</Text>
-                </LinearGradient>
+                <LinearGradient colors={[COLORS.primaryLight, COLORS.primary]} style={styles.urlEditConfirmGrad}><Text style={styles.urlEditConfirmText}>{t.add}</Text></LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
         </BlurView>
       </Modal>
 
-      {/* Preview modal */}
       {preview && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setPreview(null)}>
           <TouchableOpacity style={styles.previewOverlay} activeOpacity={1} onPress={() => setPreview(null)}>
@@ -493,20 +441,8 @@ export default function PhotosScreen() {
             <BlurView intensity={20} tint="dark" style={styles.previewBar}>
               <Text style={styles.previewName}>{preview.name}</Text>
               <View style={styles.previewBtns}>
-                {Platform.OS === 'android' && (
-                  <TouchableOpacity style={[styles.previewSetBtn, { flex: 1 }]} onPress={() => { handleSetLiveWallpaper(preview.url); setPreview(null); }}>
-                    <LinearGradient colors={['#4ade80', '#16a34a']} style={styles.previewSetGrad}>
-                      <Ionicons name="phone-portrait" size={16} color="#000" />
-                      <Text style={[styles.previewSetText, { color: '#000' }]}>{t.setAsWallpaper}</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={[styles.previewSetBtn, { flex: 1 }]} onPress={() => { addAsWallpaper(preview); setPreview(null); }}>
-                  <LinearGradient colors={[COLORS.primaryLight, COLORS.primary]} style={styles.previewSetGrad}>
-                    <Ionicons name="add-circle-outline" size={16} color={COLORS.white} />
-                    <Text style={styles.previewSetText}>{t.add}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+                {Platform.OS === 'android' && (<TouchableOpacity style={[styles.previewSetBtn, { flex: 1 }]} onPress={() => { handleSetLiveWallpaper(preview.url); setPreview(null); }}><LinearGradient colors={['#4ade80', '#16a34a']} style={styles.previewSetGrad}><Ionicons name="phone-portrait" size={16} color="#000" /><Text style={[styles.previewSetText, { color: '#000' }]}>{t.setAsWallpaper}</Text></LinearGradient></TouchableOpacity>)}
+                <TouchableOpacity style={[styles.previewSetBtn, { flex: 1 }]} onPress={() => { addAsWallpaper(preview); setPreview(null); }}><LinearGradient colors={[COLORS.primaryLight, COLORS.primary]} style={styles.previewSetGrad}><Ionicons name="add-circle-outline" size={16} color={COLORS.white} /><Text style={styles.previewSetText}>{t.add}</Text></LinearGradient></TouchableOpacity>
               </View>
             </BlurView>
           </TouchableOpacity>
@@ -554,7 +490,6 @@ const styles = StyleSheet.create({
   settingsSectionTitle: { color: COLORS.accent, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' },
   settingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
   settingsLabel: { color: COLORS.textSecondary, fontSize: 14 },
-  settingsHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 6 },
   intervalLabel: { color: COLORS.textSecondary, fontSize: 12, marginTop: 8, marginBottom: 6 },
   intervalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   intervalBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.glass, borderWidth: 1, borderColor: COLORS.border },

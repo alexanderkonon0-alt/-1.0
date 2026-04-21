@@ -13,7 +13,7 @@ import { useApp } from '../contexts/AppContext';
 import { getTranslation, LANGUAGES } from '../constants/translations';
 import { COLORS } from '../constants/colors';
 import { INSTAGRAM_URL, WEBSITE_URL, EMAIL } from '../constants/radioStations';
-import { requestDeviceAdmin, isDeviceAdminEnabled, isWallpaperModuleAvailable } from '../modules/wallpaper';
+import { requestDeviceAdmin, isWallpaperModuleAvailable } from '../modules/wallpaper';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -32,7 +32,7 @@ export default function SettingsScreen() {
 
   const openEmail = async () => {
     try {
-      await Linking.openURL(`mailto:${EMAIL}?subject=Rare Shot App Feedback`);
+      await Linking.openURL(`mailto:${EMAIL}?subject=Relax Sound App Feedback`);
     } catch {
       Alert.alert('Email', EMAIL);
     }
@@ -46,7 +46,7 @@ export default function SettingsScreen() {
     try {
       await IntentLauncher.startActivityAsync('android.intent.action.SET_WALLPAPER');
     } catch (e) {
-      Alert.alert(t.liveWallpaper, 'Go to Settings > Wallpaper > Live Wallpapers > Rare Shot');
+      Alert.alert(t.liveWallpaper, 'Go to Settings > Wallpaper > Live Wallpapers > Relax Sound');
     }
   };
 
@@ -86,12 +86,12 @@ export default function SettingsScreen() {
           <View style={styles.logoSection}>
             <View style={styles.logoCircle}>
               <LinearGradient colors={['rgba(21,128,61,0.9)', 'rgba(5,46,22,1)']} style={styles.logoGrad}>
-                <Text style={styles.logoEmoji}>🌿</Text>
+                <Text style={styles.logoEmoji}>{String.fromCodePoint(0x1F3B5)}</Text>
                 <Text style={styles.logoStars}>✦</Text>
                 <Text style={styles.logoCam}>◎</Text>
               </LinearGradient>
             </View>
-            <Text style={styles.appTitle}>RARE SHOT</Text>
+            <Text style={styles.appTitle}>RELAX SOUND</Text>
             <Text style={styles.appSubtitle}>{t.appSubtitle}</Text>
           </View>
         </View>
@@ -216,7 +216,7 @@ export default function SettingsScreen() {
         {/* About */}
         <BlurView intensity={15} tint="dark" style={styles.aboutCard}>
           <View style={styles.aboutCardInner}>
-            <Text style={styles.aboutTitle}>Rare Shot Live Wallpaper</Text>
+            <Text style={styles.aboutTitle}>Relax Sound Live Wallpapers</Text>
             <Text style={styles.aboutVersion}>{t.version} 1.0.0</Text>
             <Text style={styles.aboutDesc}>
               Живые обои с природными пейзажами, расслабляющей музыкой и эффектами частиц для вашего Android устройства.
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   logoEmoji: { fontSize: 26 },
   logoStars: { fontSize: 8, color: COLORS.gold, letterSpacing: 3 },
   logoCam: { fontSize: 16, color: COLORS.accent },
-  appTitle: { color: COLORS.textPrimary, fontSize: 22, fontWeight: '800', letterSpacing: 5, textShadowColor: COLORS.accent, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 },
+  appTitle: { color: COLORS.textPrimary, fontSize: 20, fontWeight: '800', letterSpacing: 4, textShadowColor: COLORS.accent, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 },
   appSubtitle: { color: COLORS.textSecondary, fontSize: 12, letterSpacing: 3, marginTop: 4 },
   section: { marginBottom: 20 },
   sectionTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, paddingLeft: 4 },
@@ -259,16 +259,6 @@ const styles = StyleSheet.create({
   langName: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600', flex: 1 },
   langNameActive: { color: COLORS.accent },
   langNameEn: { color: COLORS.textMuted, fontSize: 12 },
-  apkBtn: { borderRadius: 16, overflow: 'hidden' },
-  apkGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16, borderRadius: 16 },
-  apkText: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
-  widgetSection: { gap: 8 },
-  widgetCard: { borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  widgetCardBlur: { padding: 14 },
-  widgetCardRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  widgetCardIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(74,222,128,0.12)', alignItems: 'center', justifyContent: 'center' },
-  widgetCardTitle: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' },
-  widgetCardDesc: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
   aboutCard: { borderRadius: 20, overflow: 'hidden' },
   aboutCardInner: { backgroundColor: COLORS.glass, borderWidth: 1, borderColor: COLORS.border, borderRadius: 20, padding: 20, alignItems: 'center' },
   aboutTitle: { color: COLORS.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 4 },

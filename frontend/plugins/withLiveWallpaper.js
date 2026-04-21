@@ -2,10 +2,11 @@ const { withAndroidManifest, withDangerousMod } = require('expo/config-plugins')
 const fs = require('fs');
 const path = require('path');
 
-const PACKAGE_NAME = 'com.rareshot.livewallpaper';
+const PACKAGE_NAME = 'com.relaxsound.livewallpaper';
+const PREFS = 'relaxsound_prefs';
 
 // ═══════════════════════════════════════════════════════════════
-// NATIVE JAVA: AudioService (ForegroundService for radio)
+// NATIVE JAVA: AudioService  (ForegroundService for radio)
 // ═══════════════════════════════════════════════════════════════
 const AUDIO_SERVICE_JAVA = `package ${PACKAGE_NAME};
 
@@ -23,10 +24,30 @@ import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 
-public class AudioService extends Service implements SharedPreferences.OnSharedPreferenceChangeListener {
-    public static final String PREFS = "rareshot_prefs";
-    private static final String CH_ID = "rareshot_audio";
-    private static final int NOTIF_ID = 9001;
+public class AudioService extends Service {
+    public static final String PREFS = "${PREFS}";
+    private static final String CH_ID  = "relaxsound_audio";
+    private static final int    NOTIF_ID = 9001;
+    private static final String TAG    = "AudioService";
+
+    // All station URLs in the same order as JS constants/radioStations.ts
+    private static final String[] STATION_URLS = {
+        "https://ice.somafm.com/dronezone-128-mp3",
+        "https://ice.somafm.com/fluid-128-mp3",
+        "https://ice.somafm.com/sleep-128-mp3",
+        "https://ice.somafm.com/groovesalad-128-mp3",
+        "https://ice.somafm.com/spacestation-128-mp3",
+        "https://ice.somafm.com/deepspaceone-128-mp3",
+        "https://ice.somafm.com/lush-128-mp3",
+        "https://ice.somafm.com/thetrip-128-mp3",
+        "https://ice.somafm.com/suburbsofgoa-128-mp3",
+        "https://ice.somafm.com/missioncontrol-128-mp3"
+    };
+    private static final String[] STATION_NAMES = {
+        "Drone Zone", "Fluid", "Sleep.fm", "Groove Salad", "Space Station",
+        "Deep Space One", "Lush", "The Trip", "Suburbs of Goa", "Mission Control"
+    };
+
     private MediaPlayer player;
     private String radioUrl;
     private boolean isPlaying;
@@ -37,7 +58,6 @@ public class AudioService extends Service implements SharedPreferences.OnSharedP
         super.onCreate();
         createChannel();
         sp = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        sp.registerOnSharedPreferenceChangeListener(this);
         radioUrl = sp.getString("radio_url", null);
     }
 
@@ -47,19 +67,46 @@ public class AudioService extends Service implements SharedPreferences.OnSharedP
             String action = intent.getAction();
             if ("PLAY".equals(action)) {
                 radioUrl = sp.getString("radio_url", null);
+                if (radioUrl == null || radioUrl.isEmpty()) {
+                    // Use first station as default
+                    radioUrl = STATION_URLS[0];
+                    sp.edit().putString("radio_url", radioUrl).putString("station_name", STATION_NAMES[0]).apply();
+                }
                 startPlayback();
             } else if ("STOP".equals(action)) {
                 stopPlayback();
                 stopForeground(true);
                 stopSelf();
+                return START_NOT_STICKY;
+            } else if ("TOGGLE".equals(action)) {
+                if (isPlaying) {
+                    stopPlayback();
+                } else {
+                    radioUrl = sp.getString("radio_url", null);
+                    if (radioUrl == null) radioUrl = STATION_URLS[0];
+                    startPlayback();
+                }
             } else if ("NEXT".equals(action)) {
                 int idx = sp.getInt("station_index", 0) + 1;
-                if (idx > 9) idx = 0;
-                sp.edit().putInt("station_index", idx).apply();
+                if (idx >= STATION_URLS.length) idx = 0;
+                radioUrl = STATION_URLS[idx];
+                sp.edit().putInt("station_index", idx)
+                    .putString("radio_url", radioUrl)
+                    .putString("station_name", STATION_NAMES[idx]).apply();
+                startPlayback();
             } else if ("PREV".equals(action)) {
                 int idx = sp.getInt("station_index", 0) - 1;
-                if (idx < 0) idx = 9;
-                sp.edit().putInt("station_index", idx).apply();
+                if (idx < 0) idx = STATION_URLS.length - 1;
+                radioUrl = STATION_URLS[idx];
+                sp.edit().putInt("station_index", idx)
+                    .putString("radio_url", radioUrl)
+                    .putString("station_name", STATION_NAMES[idx]).apply();
+                startPlayback();
+            } else if ("SET_VOLUME".equals(action)) {
+                float vol = intent.getFloatExtra("volume", 0.8f);
+                if (player != null) {
+                    try { player.setVolume(vol, vol); } catch (Exception e) {}
+                }
             }
         }
         startForeground(NOTIF_ID, buildNotification());
@@ -75,11 +122,23 @@ public class AudioService extends Service implements SharedPreferences.OnSharedP
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .setUsage(AudioAttributes.USAGE_MEDIA).build());
             player.setDataSource(radioUrl);
-            player.setOnPreparedListener(mp -> { mp.start(); isPlaying = true; updateNotif(); });
-            player.setOnErrorListener((mp, w, e) -> { Log.e("AudioService", "Error: " + w + "/" + e); stopPlayback(); return true; });
-            player.setOnCompletionListener(mp -> { stopPlayback(); startPlayback(); });
+            player.setOnPreparedListener(mp -> {
+                mp.start(); isPlaying = true; updateNotif();
+            });
+            player.setOnErrorListener((mp, w, e) -> {
+                Log.e(TAG, "Playback error: " + w + "/" + e);
+                stopPlayback();
+                return true;
+            });
+            player.setOnCompletionListener(mp -> {
+                // Radio streams don't usually complete; restart on disconnect
+                stopPlayback(); startPlayback();
+            });
             player.prepareAsync();
-        } catch (Exception e) { Log.e("AudioService", "Start error", e); stopPlayback(); }
+        } catch (Exception e) {
+            Log.e(TAG, "Start error", e);
+            stopPlayback();
+        }
     }
 
     private void stopPlayback() {
@@ -89,20 +148,13 @@ public class AudioService extends Service implements SharedPreferences.OnSharedP
             try { player.release(); } catch (Exception e) {}
             player = null;
         }
-    }
-
-    @Override
-    public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
-        if ("radio_url".equals(key)) {
-            radioUrl = prefs.getString("radio_url", null);
-            startPlayback();
-        }
+        updateNotif();
     }
 
     private void createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel ch = new NotificationChannel(CH_ID, "Rare Shot Audio", NotificationManager.IMPORTANCE_LOW);
-            ch.setDescription("Background audio playback");
+            NotificationChannel ch = new NotificationChannel(CH_ID, "Relax Sound Radio", NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("Background radio playback");
             ch.setSound(null, null);
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) nm.createNotificationChannel(ch);
@@ -110,31 +162,48 @@ public class AudioService extends Service implements SharedPreferences.OnSharedP
     }
 
     private Notification buildNotification() {
-        String title = sp.getString("station_name", "Rare Shot Radio");
+        String stationName = sp.getString("station_name", "Relax Sound Radio");
         Intent mainIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        PendingIntent pi = PendingIntent.getActivity(this, 0, mainIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        if (mainIntent == null) mainIntent = new Intent();
+        PendingIntent pi = PendingIntent.getActivity(this, 0, mainIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        // Actions for the notification
+        Intent stopIntent = new Intent(this, AudioService.class);
+        stopIntent.setAction("STOP");
+        PendingIntent stopPi = PendingIntent.getService(this, 1, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Intent nextIntent = new Intent(this, AudioService.class);
+        nextIntent.setAction("NEXT");
+        PendingIntent nextPi = PendingIntent.getService(this, 2, nextIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification.Builder b;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) b = new Notification.Builder(this, CH_ID);
-        else b = new Notification.Builder(this);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            b = new Notification.Builder(this, CH_ID);
+        else
+            b = new Notification.Builder(this);
 
-        return b.setContentTitle(title)
+        return b.setContentTitle("Relax Sound \u2014 " + stationName)
             .setContentText(isPlaying ? "Playing..." : "Paused")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(pi)
             .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_next, "Next", nextPi)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPi)
             .build();
     }
 
     private void updateNotif() {
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        if (nm != null) nm.notify(NOTIF_ID, buildNotification());
+        try {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.notify(NOTIF_ID, buildNotification());
+        } catch (Exception e) {}
     }
 
     @Override
     public void onDestroy() {
         stopPlayback();
-        if (sp != null) sp.unregisterOnSharedPreferenceChangeListener(this);
         super.onDestroy();
     }
 
@@ -144,8 +213,7 @@ public class AudioService extends Service implements SharedPreferences.OnSharedP
 `;
 
 // ═══════════════════════════════════════════════════════════════
-// NATIVE JAVA: LiveWallpaperService  (photo + particles + video
-//              + auto-change + double-tap screen-lock)
+// NATIVE JAVA: LiveWallpaperService
 // ═══════════════════════════════════════════════════════════════
 const LIVE_SERVICE_JAVA = `package ${PACKAGE_NAME};
 
@@ -170,7 +238,7 @@ import java.util.List;
 import java.util.Random;
 
 public class LiveWallpaperService extends WallpaperService {
-    public static final String PREFS = "rareshot_prefs";
+    public static final String PREFS = "${PREFS}";
 
     @Override
     public Engine onCreateEngine() { return new LiveEngine(); }
@@ -201,10 +269,12 @@ public class LiveWallpaperService extends WallpaperService {
         private final List<String> uriList = new ArrayList<>();
         private int uriIdx;
         private long lastChgMs;
+
+        // Gesture tracking
         private long tapMs;
         private float tapX, tapY;
-        private android.media.MediaPlayer audioMp;
-        private String radioUrl;
+        private float swipeStartX = -1;
+
         private final Runnable drawR = () -> doDraw();
 
         @Override
@@ -215,7 +285,6 @@ public class LiveWallpaperService extends WallpaperService {
             sp.registerOnSharedPreferenceChangeListener(this);
             load(sp);
             mkPts();
-            if (radioUrl != null && !radioUrl.isEmpty()) startAudio();
         }
 
         @Override
@@ -226,7 +295,6 @@ public class LiveWallpaperService extends WallpaperService {
                 .unregisterOnSharedPreferenceChangeListener(this); } catch (Exception e) {}
             killVid();
             killBmp();
-            stopAudio();
         }
 
         @Override
@@ -235,12 +303,9 @@ public class LiveWallpaperService extends WallpaperService {
             if (v) {
                 H.post(drawR);
                 if (isVid && mp != null) try { mp.start(); } catch (Exception e) {}
-                if (audioMp != null) try { audioMp.start(); } catch (Exception e) {}
-                else if (radioUrl != null && !radioUrl.isEmpty()) startAudio();
             } else {
                 H.removeCallbacks(drawR);
                 if (isVid && mp != null) try { mp.pause(); } catch (Exception e) {}
-                if (audioMp != null) try { audioMp.pause(); } catch (Exception e) {}
             }
         }
 
@@ -258,21 +323,60 @@ public class LiveWallpaperService extends WallpaperService {
 
         @Override
         public void onTouchEvent(MotionEvent ev) {
-            if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            int action = ev.getAction();
+            if (action == MotionEvent.ACTION_DOWN) {
+                swipeStartX = ev.getX();
                 long now = System.currentTimeMillis();
-                if (now - tapMs < 300 && Math.abs(ev.getX() - tapX) < 100 && Math.abs(ev.getY() - tapY) < 100) {
+                if (now - tapMs < 400 &&
+                    Math.abs(ev.getX() - tapX) < 150 &&
+                    Math.abs(ev.getY() - tapY) < 150) {
                     dblTap(); tapMs = 0;
-                } else { tapMs = now; tapX = ev.getX(); tapY = ev.getY(); }
+                } else {
+                    tapMs = now; tapX = ev.getX(); tapY = ev.getY();
+                }
+            } else if (action == MotionEvent.ACTION_UP) {
+                if (swipeStartX >= 0) {
+                    float dx = ev.getX() - swipeStartX;
+                    if (Math.abs(dx) > 200) {
+                        if (dx < 0) nextWallpaperSwipe();
+                        else prevWallpaperSwipe();
+                    }
+                    swipeStartX = -1;
+                }
             }
             super.onTouchEvent(ev);
         }
 
         private void dblTap() {
+            // Try DevicePolicyManager first
             try {
                 DevicePolicyManager d = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
                 ComponentName cn = new ComponentName(c(), ScreenLockAdmin.class);
-                if (d != null && d.isAdminActive(cn)) d.lockNow();
+                if (d != null && d.isAdminActive(cn)) { d.lockNow(); return; }
             } catch (Exception e) {}
+            // Fallback: use AccessibilityService global action
+            try {
+                ScreenLockAccessibilityService svc = ScreenLockAccessibilityService.getInstance();
+                if (svc != null) svc.performLockScreen();
+            } catch (Exception e) {}
+        }
+
+        private void nextWallpaperSwipe() {
+            if (uriList.isEmpty()) return;
+            uriIdx = (uriIdx + 1) % uriList.size();
+            curUri = uriList.get(uriIdx);
+            loadImg(curUri);
+            c().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString("wallpaper_uri", curUri).apply();
+        }
+
+        private void prevWallpaperSwipe() {
+            if (uriList.isEmpty()) return;
+            uriIdx = (uriIdx - 1 + uriList.size()) % uriList.size();
+            curUri = uriList.get(uriIdx);
+            loadImg(curUri);
+            c().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString("wallpaper_uri", curUri).apply();
         }
 
         @Override
@@ -283,27 +387,7 @@ public class LiveWallpaperService extends WallpaperService {
                 if (isVid && vidUri != null) initVid(); else { killVid(); if (curUri != null) loadImg(curUri); }
             }
             if ("effect_type".equals(k) || "effect_intensity".equals(k)) mkPts();
-            if ("radio_url".equals(k)) startAudio();
         }
-
-        private void startAudio() {
-            stopAudio();
-            if (radioUrl == null || radioUrl.isEmpty()) return;
-            new Thread(() -> {
-                try {
-                    audioMp = new android.media.MediaPlayer();
-                    audioMp.setDataSource(radioUrl);
-                    audioMp.setAudioAttributes(new android.media.AudioAttributes.Builder()
-                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA).build());
-                    audioMp.setLooping(false);
-                    audioMp.setOnPreparedListener(p -> { if (vis) p.start(); });
-                    audioMp.setOnErrorListener((p, w, e) -> { stopAudio(); return true; });
-                    audioMp.prepareAsync();
-                } catch (Exception e) { stopAudio(); }
-            }).start();
-        }
-        private void stopAudio() { if (audioMp != null) { try { audioMp.stop(); } catch (Exception e) {} try { audioMp.release(); } catch (Exception e) {} audioMp = null; } }
 
         private void load(SharedPreferences sp) {
             curUri = sp.getString("wallpaper_uri", null);
@@ -315,8 +399,10 @@ public class LiveWallpaperService extends WallpaperService {
             autoChg = sp.getBoolean("auto_change", false);
             autoSec = sp.getInt("auto_change_interval", 300);
             uriList.clear();
-            try { JSONArray a = new JSONArray(sp.getString("wallpaper_uris", "[]")); for (int i = 0; i < a.length(); i++) uriList.add(a.getString(i)); } catch (Exception e) {}
-            radioUrl = sp.getString("radio_url", null);
+            try {
+                JSONArray a = new JSONArray(sp.getString("wallpaper_uris", "[]"));
+                for (int i = 0; i < a.length(); i++) uriList.add(a.getString(i));
+            } catch (Exception e) {}
         }
 
         private void loadImg(final String uri) {
@@ -326,7 +412,7 @@ public class LiveWallpaperService extends WallpaperService {
                     Bitmap b;
                     if (uri.startsWith("http")) {
                         HttpURLConnection cn = (HttpURLConnection) new URL(uri).openConnection();
-                        cn.setConnectTimeout(10000); cn.setReadTimeout(10000); cn.connect();
+                        cn.setConnectTimeout(12000); cn.setReadTimeout(12000); cn.connect();
                         b = BitmapFactory.decodeStream(cn.getInputStream()); cn.disconnect();
                     } else {
                         InputStream is = getContentResolver().openInputStream(Uri.parse(uri));
@@ -370,11 +456,12 @@ public class LiveWallpaperService extends WallpaperService {
             if (mp != null) { try { mp.stop(); } catch (Exception e) {} try { mp.release(); } catch (Exception e) {} mp = null; }
         }
 
-        // ── PARTICLES ──
+        // ── PARTICLES (2x bigger than original) ──────────────────────────────
         private void mkPts() {
             pts.clear();
             if ("none".equals(fx)) return;
-            int n = fxInt == 1 ? 20 : fxInt == 2 ? 40 : 65;
+            // Doubled particle counts: 40/80/130 (was 20/40/65)
+            int n = fxInt == 1 ? 40 : fxInt == 2 ? 80 : 130;
             for (int i = 0; i < n; i++) { Pt p = new Pt(); resetP(p, true); pts.add(p); }
         }
 
@@ -384,34 +471,45 @@ public class LiveWallpaperService extends WallpaperService {
                 case "rain":
                     p.y = scatter ? R.nextFloat() * H2 : -(R.nextFloat() * 80 + 20);
                     p.vy = 900 + R.nextFloat() * 500; p.vx = R.nextFloat() * 20 - 10;
-                    p.sz = 2f; p.color = Color.argb(130, 180, 220, 255); break;
+                    p.sz = 4f;   // was 2f — 2x bigger
+                    p.color = Color.argb(130, 180, 220, 255); break;
                 case "snow":
                     p.y = scatter ? R.nextFloat() * H2 : -(R.nextFloat() * 60 + 20);
                     p.vy = 50 + R.nextFloat() * 70; p.vx = R.nextFloat() * 40 - 20;
-                    p.sz = 4 + R.nextFloat() * 8; p.color = Color.argb(200, 255, 255, 255); break;
+                    p.sz = 8 + R.nextFloat() * 16;  // was 4+8 — 2x bigger
+                    p.color = Color.argb(200, 255, 255, 255); break;
                 case "leaves":
                     p.y = scatter ? R.nextFloat() * H2 : -(R.nextFloat() * 60 + 20);
                     p.vy = 70 + R.nextFloat() * 50; p.vx = 20 + R.nextFloat() * 30;
-                    p.sz = 10 + R.nextFloat() * 8; p.rotSpd = 40 + R.nextFloat() * 60;
-                    int[] lc = {Color.argb(170,74,222,128), Color.argb(165,34,197,94), Color.argb(170,21,128,61), Color.argb(150,251,191,36), Color.argb(152,134,239,172)};
+                    p.sz = 20 + R.nextFloat() * 16;  // was 10+8 — 2x bigger
+                    p.rotSpd = 40 + R.nextFloat() * 60;
+                    int[] lc = {Color.argb(170,74,222,128), Color.argb(165,34,197,94),
+                                Color.argb(170,21,128,61), Color.argb(150,251,191,36),
+                                Color.argb(152,134,239,172)};
                     p.color = lc[R.nextInt(lc.length)]; break;
                 case "sparkles":
                     p.y = R.nextFloat() * H2; p.vy = 0; p.vx = 0;
-                    p.sz = 10 + R.nextFloat() * 14; p.maxAge = 1.5f + R.nextFloat() * 2f;
+                    p.sz = 20 + R.nextFloat() * 28;  // was 10+14 — 2x bigger
+                    p.maxAge = 1.5f + R.nextFloat() * 2f;
                     p.color = Color.argb(200, 251, 191, 36); break;
                 case "bubbles":
                     p.y = scatter ? R.nextFloat() * H2 : H2 + R.nextFloat() * 60;
                     p.vy = -(60 + R.nextFloat() * 60); p.vx = R.nextFloat() * 20 - 10;
-                    p.sz = 8 + R.nextFloat() * 20; p.color = Color.argb(100, 74, 222, 128); break;
+                    p.sz = 16 + R.nextFloat() * 40;  // was 8+20 — 2x bigger
+                    p.color = Color.argb(100, 74, 222, 128); break;
                 case "fireflies":
                     p.y = R.nextFloat() * H2; p.vx = R.nextFloat() * 40 - 20; p.vy = R.nextFloat() * 40 - 20;
-                    p.sz = 5; p.maxAge = 3 + R.nextFloat() * 3; p.color = Color.argb(230, 180, 255, 100); break;
+                    p.sz = 10;  // was 5 — 2x bigger
+                    p.maxAge = 3 + R.nextFloat() * 3;
+                    p.color = Color.argb(230, 180, 255, 100); break;
                 case "petals":
                     p.y = scatter ? R.nextFloat() * H2 : -(R.nextFloat() * 60 + 20);
                     p.vy = 50 + R.nextFloat() * 40; p.vx = 10 + R.nextFloat() * 20;
-                    p.sz = 8 + R.nextFloat() * 6; p.rotSpd = 20 + R.nextFloat() * 40;
+                    p.sz = 16 + R.nextFloat() * 12;  // was 8+6 — 2x bigger
+                    p.rotSpd = 20 + R.nextFloat() * 40;
                     p.color = Color.argb(180, 255, 182, 193); break;
-                default: p.y = -50; p.vy = 100; p.sz = 4; p.color = Color.WHITE;
+                default:
+                    p.y = -50; p.vy = 100; p.sz = 8; p.color = Color.WHITE;
             }
         }
 
@@ -421,27 +519,42 @@ public class LiveWallpaperService extends WallpaperService {
             float sm = fxSpd == 1 ? 0.5f : fxSpd == 3 ? 2.0f : 1.0f;
             for (Pt p : pts) {
                 p.tick(dt * sm);
-                boolean off = p.y > H2 + 60 || p.y < -120 || p.x > W + 60 || p.x < -60;
+                boolean off = p.y > H2 + 100 || p.y < -150 || p.x > W + 100 || p.x < -100;
                 if ("sparkles".equals(fx) || "fireflies".equals(fx)) {
                     if (p.age > p.maxAge) { resetP(p, true); continue; }
                     float lf = p.age / p.maxAge;
                     float fd = lf < 0.3f ? lf / 0.3f : lf > 0.7f ? (1f - lf) / 0.3f : 1f;
                     pp.setAlpha((int)(Color.alpha(p.color) * fd));
-                } else { if (off) { resetP(p, false); continue; } pp.setAlpha(Color.alpha(p.color)); }
+                } else {
+                    if (off) { resetP(p, false); continue; }
+                    pp.setAlpha(Color.alpha(p.color));
+                }
                 pp.setColor(p.color); pp.setStyle(Paint.Style.FILL);
                 switch (fx) {
-                    case "rain": pp.setStrokeWidth(p.sz); c.drawLine(p.x, p.y, p.x + 1, p.y + 22, pp); break;
-                    case "snow": c.drawCircle(p.x, p.y, p.sz / 2, pp); break;
-                    case "leaves": c.save(); c.rotate(p.rot, p.x, p.y);
-                        c.drawOval(new RectF(p.x - p.sz/2, p.y - p.sz/4, p.x + p.sz/2, p.y + p.sz/4), pp); c.restore(); break;
-                    case "sparkles": drawStar(c, p.x, p.y, p.sz * 0.5f); break;
-                    case "bubbles": pp.setStyle(Paint.Style.STROKE); pp.setStrokeWidth(1.5f);
-                        c.drawCircle(p.x, p.y, p.sz / 2, pp); pp.setStyle(Paint.Style.FILL); break;
+                    case "rain":
+                        pp.setStrokeWidth(p.sz);
+                        c.drawLine(p.x, p.y, p.x + 2, p.y + 44, pp);  // was y+22 — 2x longer
+                        break;
+                    case "snow":
+                        c.drawCircle(p.x, p.y, p.sz / 2, pp); break;
+                    case "leaves":
+                        c.save(); c.rotate(p.rot, p.x, p.y);
+                        c.drawOval(new RectF(p.x - p.sz/2, p.y - p.sz/4, p.x + p.sz/2, p.y + p.sz/4), pp);
+                        c.restore(); break;
+                    case "sparkles":
+                        drawStar(c, p.x, p.y, p.sz * 0.5f); break;
+                    case "bubbles":
+                        pp.setStyle(Paint.Style.STROKE); pp.setStrokeWidth(2.5f);
+                        c.drawCircle(p.x, p.y, p.sz / 2, pp);
+                        pp.setStyle(Paint.Style.FILL); break;
                     case "fireflies":
                         int ba = pp.getAlpha();
                         pp.setAlpha(ba / 3); c.drawCircle(p.x, p.y, p.sz * 3, pp);
                         pp.setAlpha(ba); c.drawCircle(p.x, p.y, p.sz, pp); break;
-                    case "petals": c.save(); c.rotate(p.rot, p.x, p.y); c.drawCircle(p.x, p.y, p.sz / 2, pp); c.restore(); break;
+                    case "petals":
+                        c.save(); c.rotate(p.rot, p.x, p.y);
+                        c.drawCircle(p.x, p.y, p.sz / 2, pp);
+                        c.restore(); break;
                 }
             }
         }
@@ -459,7 +572,7 @@ public class LiveWallpaperService extends WallpaperService {
             path.close(); c.drawPath(path, pp);
         }
 
-        // ── AUTO-CHANGE ──
+        // ── AUTO-CHANGE ──────────────────────────────────────────────────────
         private void autoCheck() {
             if (!autoChg || uriList.isEmpty()) return;
             long now = System.currentTimeMillis();
@@ -472,7 +585,7 @@ public class LiveWallpaperService extends WallpaperService {
             }
         }
 
-        // ── DRAW LOOP ──
+        // ── DRAW LOOP ─────────────────────────────────────────────────────────
         private void doDraw() {
             if (!vis) return;
             autoCheck();
@@ -489,7 +602,9 @@ public class LiveWallpaperService extends WallpaperService {
                     drawPts(canvas);
                 }
             } catch (Exception e) {
-            } finally { if (canvas != null) try { sh.unlockCanvasAndPost(canvas); } catch (Exception e) {} }
+            } finally {
+                if (canvas != null) try { sh.unlockCanvasAndPost(canvas); } catch (Exception e) {}
+            }
             H.removeCallbacks(drawR); if (vis) H.postDelayed(drawR, 33);
         }
 
@@ -499,7 +614,7 @@ public class LiveWallpaperService extends WallpaperService {
 `;
 
 // ═══════════════════════════════════════════════════════════════
-// NATIVE JAVA: WallpaperModule  (React Native bridge)
+// NATIVE JAVA: WallpaperModule (React Native bridge)
 // ═══════════════════════════════════════════════════════════════
 const WALLPAPER_MODULE_JAVA = `package ${PACKAGE_NAME};
 
@@ -517,10 +632,12 @@ import com.facebook.react.bridge.ReadableArray;
 import org.json.JSONArray;
 
 public class WallpaperModule extends ReactContextBaseJavaModule {
-    public static final String PREFS = "rareshot_prefs";
+    public static final String PREFS = "${PREFS}";
     public WallpaperModule(ReactApplicationContext ctx) { super(ctx); }
     @Override public String getName() { return "WallpaperModule"; }
-    private SharedPreferences sp() { return getReactApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE); }
+    private SharedPreferences sp() {
+        return getReactApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
 
     @ReactMethod public void setWallpaperUri(String uri, Promise p) {
         try { sp().edit().putString("wallpaper_uri", uri).putBoolean("is_video", false).apply(); p.resolve(true); }
@@ -531,13 +648,51 @@ public class WallpaperModule extends ReactContextBaseJavaModule {
         catch (Exception e) { p.reject("E", e.getMessage()); }
     }
     @ReactMethod public void setWallpaperUris(ReadableArray uris, Promise p) {
-        try { JSONArray a = new JSONArray(); for (int i = 0; i < uris.size(); i++) a.put(uris.getString(i));
-            sp().edit().putString("wallpaper_uris", a.toString()).apply(); p.resolve(true); }
-        catch (Exception e) { p.reject("E", e.getMessage()); }
+        try {
+            JSONArray a = new JSONArray();
+            for (int i = 0; i < uris.size(); i++) a.put(uris.getString(i));
+            sp().edit().putString("wallpaper_uris", a.toString()).apply(); p.resolve(true);
+        } catch (Exception e) { p.reject("E", e.getMessage()); }
+    }
+    @ReactMethod public void nextWallpaper(Promise p) {
+        try {
+            SharedPreferences sp = sp();
+            int idx = sp.getInt("wallpaper_index", 0) + 1;
+            JSONArray uris = new JSONArray(sp.getString("wallpaper_uris", "[]"));
+            if (uris.length() == 0) { p.resolve(false); return; }
+            if (idx >= uris.length()) idx = 0;
+            String uri = uris.getString(idx);
+            sp.edit().putInt("wallpaper_index", idx).putString("wallpaper_uri", uri).apply();
+            p.resolve(true);
+        } catch (Exception e) { p.reject("E", e.getMessage()); }
+    }
+    @ReactMethod public void prevWallpaper(Promise p) {
+        try {
+            SharedPreferences sp = sp();
+            JSONArray uris = new JSONArray(sp.getString("wallpaper_uris", "[]"));
+            if (uris.length() == 0) { p.resolve(false); return; }
+            int idx = sp.getInt("wallpaper_index", 0) - 1;
+            if (idx < 0) idx = uris.length() - 1;
+            String uri = uris.getString(idx);
+            sp.edit().putInt("wallpaper_index", idx).putString("wallpaper_uri", uri).apply();
+            p.resolve(true);
+        } catch (Exception e) { p.reject("E", e.getMessage()); }
     }
     @ReactMethod public void setEffect(String type, int intensity, int speed, Promise p) {
-        try { sp().edit().putString("effect_type", type).putInt("effect_intensity", intensity).putInt("effect_speed", speed).apply(); p.resolve(true); }
+        try { sp().edit().putString("effect_type", type).putInt("effect_intensity", intensity)
+            .putInt("effect_speed", speed).apply(); p.resolve(true); }
         catch (Exception e) { p.reject("E", e.getMessage()); }
+    }
+    @ReactMethod public void setVolume(float volume, Promise p) {
+        try {
+            sp().edit().putFloat("volume", volume).apply();
+            // Send to AudioService
+            Intent i = new Intent(getReactApplicationContext(), AudioService.class);
+            i.setAction("SET_VOLUME");
+            i.putExtra("volume", volume);
+            getReactApplicationContext().startService(i);
+            p.resolve(true);
+        } catch (Exception e) { p.reject("E", e.getMessage()); }
     }
     @ReactMethod public void setAutoChange(boolean on, int sec, Promise p) {
         try { sp().edit().putBoolean("auto_change", on).putInt("auto_change_interval", sec).apply(); p.resolve(true); }
@@ -596,16 +751,16 @@ public class WallpaperModule extends ReactContextBaseJavaModule {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 java.io.InputStream is;
                 if (uri.startsWith("http")) {
-                    java.net.HttpURLConnection cn = (java.net.HttpURLConnection) new java.net.URL(uri).openConnection();
-                    cn.setConnectTimeout(10000); cn.setReadTimeout(10000); cn.connect();
-                    is = cn.getInputStream();
+                    java.net.HttpURLConnection cn2 = (java.net.HttpURLConnection) new java.net.URL(uri).openConnection();
+                    cn2.setConnectTimeout(10000); cn2.setReadTimeout(10000); cn2.connect();
+                    is = cn2.getInputStream();
                 } else {
-                    is = getReactApplicationContext().getContentResolver().openInputStream(android.net.Uri.parse(uri));
+                    is = getReactApplicationContext().getContentResolver()
+                        .openInputStream(android.net.Uri.parse(uri));
                 }
                 if (is != null) {
                     wm.setStream(is, null, true, android.app.WallpaperManager.FLAG_LOCK);
-                    is.close();
-                    p.resolve(true);
+                    is.close(); p.resolve(true);
                 } else { p.reject("E", "Cannot open stream"); }
             } else { p.reject("E", "Requires Android 7+"); }
         } catch (Exception e) { p.reject("E", e.getMessage()); }
@@ -657,7 +812,7 @@ public class WallpaperPackage implements ReactPackage {
 `;
 
 // ═══════════════════════════════════════════════════════════════
-// NATIVE JAVA: ScreenLockAdmin  (DeviceAdminReceiver)
+// NATIVE JAVA: ScreenLockAdmin
 // ═══════════════════════════════════════════════════════════════
 const SCREEN_LOCK_ADMIN_JAVA = `package ${PACKAGE_NAME};
 
@@ -678,14 +833,13 @@ const ACCESSIBILITY_SERVICE_JAVA = `package ${PACKAGE_NAME};
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.Build;
 import android.view.accessibility.AccessibilityEvent;
 
 public class ScreenLockAccessibilityService extends AccessibilityService {
-    public static final String PREFS = "rareshot_prefs";
-    private long lastTapMs = 0;
+    private static ScreenLockAccessibilityService sInstance;
+
+    public static ScreenLockAccessibilityService getInstance() { return sInstance; }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {}
@@ -696,11 +850,18 @@ public class ScreenLockAccessibilityService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        sInstance = this;
         AccessibilityServiceInfo info = new AccessibilityServiceInfo();
         info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
         info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
         info.flags = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
         setServiceInfo(info);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (sInstance == this) sInstance = null;
     }
 
     public void performLockScreen() {
@@ -716,7 +877,7 @@ public class ScreenLockAccessibilityService extends AccessibilityService {
 // ═══════════════════════════════════════════════════════════════
 const WALLPAPER_XML = `<?xml version="1.0" encoding="utf-8"?>
 <wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
-    android:label="Rare Shot Live Wallpaper"
+    android:label="Relax Sound Live Wallpaper"
     android:thumbnail="@mipmap/ic_launcher"
     android:settingsActivity="${PACKAGE_NAME}.MainActivity" />
 `;
@@ -761,18 +922,23 @@ function findFile(dir, name) {
 // ═══════════════════════════════════════════════════════════════
 const withLiveWallpaper = (config) => {
 
-  // ── 1. AndroidManifest: WallpaperService + ScreenLockAdmin ──
+  // ── 1. AndroidManifest ──────────────────────────────────────
   config = withAndroidManifest(config, (cfg) => {
     const manifest = cfg.modResults.manifest;
     const app = manifest.application?.[0];
     if (!app) return cfg;
 
-    // WallpaperService
     app.service = app.service || [];
+
+    // LiveWallpaperService
     if (!app.service.some(s => s.$?.['android:name'] === '.LiveWallpaperService')) {
       app.service.push({
-        $: { 'android:name': '.LiveWallpaperService', 'android:label': 'Rare Shot Live Wallpaper',
-             'android:permission': 'android.permission.BIND_WALLPAPER', 'android:exported': 'true' },
+        $: {
+          'android:name': '.LiveWallpaperService',
+          'android:label': 'Relax Sound Live Wallpaper',
+          'android:permission': 'android.permission.BIND_WALLPAPER',
+          'android:exported': 'true',
+        },
         'intent-filter': [{ action: [{ $: { 'android:name': 'android.service.wallpaper.WallpaperService' } }] }],
         'meta-data': [{ $: { 'android:name': 'android.service.wallpaper', 'android:resource': '@xml/wallpaper' } }],
       });
@@ -788,42 +954,45 @@ const withLiveWallpaper = (config) => {
       });
     }
 
-    // AccessibilityService for screen lock
-    app.service = app.service || [];
+    // AccessibilityService
     if (!app.service.some(s => s.$?.['android:name'] === '.ScreenLockAccessibilityService')) {
       app.service.push({
-        $: { 'android:name': '.ScreenLockAccessibilityService', 'android:label': 'Rare Shot Screen Lock',
-             'android:permission': 'android.permission.BIND_ACCESSIBILITY_SERVICE', 'android:exported': 'false' },
+        $: {
+          'android:name': '.ScreenLockAccessibilityService',
+          'android:label': 'Relax Sound Screen Lock',
+          'android:permission': 'android.permission.BIND_ACCESSIBILITY_SERVICE',
+          'android:exported': 'false',
+        },
         'intent-filter': [{ action: [{ $: { 'android:name': 'android.accessibilityservice.AccessibilityService' } }] }],
         'meta-data': [{ $: { 'android:name': 'android.accessibilityservice', 'android:resource': '@xml/accessibility_config' } }],
       });
     }
 
-    // AudioService for background radio playback
+    // AudioService
     if (!app.service.some(s => s.$?.['android:name'] === '.AudioService')) {
       app.service.push({
-        $: { 'android:name': '.AudioService', 'android:exported': 'false',
-             'android:foregroundServiceType': 'mediaPlayback' },
+        $: { 'android:name': '.AudioService', 'android:exported': 'false', 'android:foregroundServiceType': 'mediaPlayback' },
       });
     }
 
-    // Add FOREGROUND_SERVICE permission
+    // Permissions
     const permissions = manifest['uses-permission'] || [];
     const permNames = permissions.map(p => p.$?.['android:name']);
-    if (!permNames.includes('android.permission.FOREGROUND_SERVICE')) {
-      permissions.push({ $: { 'android:name': 'android.permission.FOREGROUND_SERVICE' } });
-    }
-    if (!permNames.includes('android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK')) {
-      permissions.push({ $: { 'android:name': 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK' } });
-    }
-    if (!permNames.includes('android.permission.INTERNET')) {
-      permissions.push({ $: { 'android:name': 'android.permission.INTERNET' } });
+    const needed = [
+      'android.permission.FOREGROUND_SERVICE',
+      'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+      'android.permission.INTERNET',
+    ];
+    for (const perm of needed) {
+      if (!permNames.includes(perm)) {
+        permissions.push({ $: { 'android:name': perm } });
+      }
     }
     manifest['uses-permission'] = permissions;
     return cfg;
   });
 
-  // ── 2. Write Java + XML files & patch MainApplication ──
+  // ── 2. Write Java + XML files & patch MainApplication ──────
   config = withDangerousMod(config, ['android', async (cfg) => {
     const root = cfg.modRequest.projectRoot;
     const andro = path.join(root, 'android');
@@ -833,24 +1002,18 @@ const withLiveWallpaper = (config) => {
     fs.mkdirSync(jDir, { recursive: true });
     fs.mkdirSync(xmlDir, { recursive: true });
 
-    // Write Java
     fs.writeFileSync(path.join(jDir, 'LiveWallpaperService.java'), LIVE_SERVICE_JAVA);
     fs.writeFileSync(path.join(jDir, 'WallpaperModule.java'), WALLPAPER_MODULE_JAVA);
     fs.writeFileSync(path.join(jDir, 'WallpaperPackage.java'), WALLPAPER_PACKAGE_JAVA);
     fs.writeFileSync(path.join(jDir, 'ScreenLockAdmin.java'), SCREEN_LOCK_ADMIN_JAVA);
+    fs.writeFileSync(path.join(jDir, 'ScreenLockAccessibilityService.java'), ACCESSIBILITY_SERVICE_JAVA);
+    fs.writeFileSync(path.join(jDir, 'AudioService.java'), AUDIO_SERVICE_JAVA);
 
-    // Write XML
     fs.writeFileSync(path.join(xmlDir, 'wallpaper.xml'), WALLPAPER_XML);
     fs.writeFileSync(path.join(xmlDir, 'device_admin.xml'), DEVICE_ADMIN_XML);
     fs.writeFileSync(path.join(xmlDir, 'accessibility_config.xml'), ACCESSIBILITY_XML);
 
-    // Write Accessibility Service
-    fs.writeFileSync(path.join(jDir, 'ScreenLockAccessibilityService.java'), ACCESSIBILITY_SERVICE_JAVA);
-
-    // Write AudioService
-    fs.writeFileSync(path.join(jDir, 'AudioService.java'), AUDIO_SERVICE_JAVA);
-
-    // ── Patch MainApplication to register WallpaperPackage ──
+    // Patch MainApplication to register WallpaperPackage
     const srcMain = path.join(andro, 'app', 'src', 'main');
     const ktFile = findFile(srcMain, 'MainApplication.kt');
     const jvFile = findFile(srcMain, 'MainApplication.java');

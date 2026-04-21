@@ -6,6 +6,7 @@ import { Stack } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { AppProvider, useApp } from '../contexts/AppContext';
 import { ParticleSystem } from '../components/ParticleSystem';
+import { VolumeWidget } from '../components/VolumeWidget';
 import { COLORS } from '../constants/colors';
 
 function AppShell() {
@@ -18,6 +19,7 @@ function AppShell() {
         <Stack.Screen name="settings" options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }} />
       </Stack>
       <ParticleSystem type={activeEffect} intensity={effectIntensity} speed={effectSpeed} />
+      <VolumeWidget />
       <StatusBar style="light" translucent backgroundColor="transparent" />
     </View>
   );

@@ -31,7 +31,8 @@ const PulsingDot = ({ active }: { active: boolean }) => {
 
 export default function MusicScreen() {
   const insets = useSafeAreaInsets();
-  const { isPlaying, currentStation, playStation, nextStation, prevStation, togglePlay, volume, language } = useApp();
+  const { isPlaying, currentStation, setCurrentStation, nextStation, prevStation, togglePlay, volume, language } = useApp();
+  const playStation = setCurrentStation;
   const t = getTranslation(language);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 

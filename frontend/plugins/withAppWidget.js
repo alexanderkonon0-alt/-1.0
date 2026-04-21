@@ -2,7 +2,14 @@ const { withAndroidManifest, withDangerousMod } = require('expo/config-plugins')
 const fs = require('fs');
 const path = require('path');
 
-const PACKAGE_NAME = 'com.rareshot.livewallpaper';
+const PACKAGE_NAME = 'com.relaxsound.livewallpaper';
+const PREFS = 'relaxsound_prefs';
+
+// Ordered station names matching AudioService.STATION_NAMES
+const STATION_NAMES_JS = [
+  'Drone Zone', 'Fluid', 'Sleep.fm', 'Groove Salad', 'Space Station',
+  'Deep Space One', 'Lush', 'The Trip', 'Suburbs of Goa', 'Mission Control'
+];
 
 const MUSIC_WIDGET_JAVA = `package ${PACKAGE_NAME};
 
@@ -17,14 +24,19 @@ import android.media.AudioManager;
 import android.widget.RemoteViews;
 
 public class MusicWidgetProvider extends AppWidgetProvider {
-    private static final String PREFS = "rareshot_prefs";
-    private static final String A_VOL_UP = "${PACKAGE_NAME}.VOL_UP";
-    private static final String A_VOL_DN = "${PACKAGE_NAME}.VOL_DN";
-    private static final String A_PLAY = "${PACKAGE_NAME}.PLAY";
-    private static final String A_NEXT = "${PACKAGE_NAME}.NEXT";
-    private static final String A_PREV = "${PACKAGE_NAME}.PREV";
-    private static final String A_FX = "${PACKAGE_NAME}.FX_TOGGLE";
-    private static final String A_PHOTO = "${PACKAGE_NAME}.PHOTO_NEXT";
+    private static final String PREFS       = "${PREFS}";
+    private static final String A_VOL_UP    = "${PACKAGE_NAME}.VOL_UP";
+    private static final String A_VOL_DN    = "${PACKAGE_NAME}.VOL_DN";
+    private static final String A_PLAY      = "${PACKAGE_NAME}.PLAY";
+    private static final String A_NEXT      = "${PACKAGE_NAME}.NEXT";
+    private static final String A_PREV      = "${PACKAGE_NAME}.PREV";
+    private static final String A_FX        = "${PACKAGE_NAME}.FX_TOGGLE";
+    private static final String A_PHOTO     = "${PACKAGE_NAME}.PHOTO_NEXT";
+
+    private static final String[] STATION_NAMES = {
+        "Drone Zone", "Fluid", "Sleep.fm", "Groove Salad", "Space Station",
+        "Deep Space One", "Lush", "The Trip", "Suburbs of Goa", "Mission Control"
+    };
 
     @Override
     public void onUpdate(Context c, AppWidgetManager m, int[] ids) {
@@ -35,27 +47,27 @@ public class MusicWidgetProvider extends AppWidgetProvider {
         int layoutId = c.getResources().getIdentifier("widget_music", "layout", c.getPackageName());
         if (layoutId == 0) return;
         RemoteViews v = new RemoteViews(c.getPackageName(), layoutId);
-        
-        int btnVU = c.getResources().getIdentifier("btn_vol_up", "id", c.getPackageName());
-        int btnVD = c.getResources().getIdentifier("btn_vol_down", "id", c.getPackageName());
-        int btnPlay = c.getResources().getIdentifier("btn_play", "id", c.getPackageName());
-        int btnNext = c.getResources().getIdentifier("btn_next", "id", c.getPackageName());
-        int btnPrev = c.getResources().getIdentifier("btn_prev", "id", c.getPackageName());
-        int btnFx = c.getResources().getIdentifier("btn_fx", "id", c.getPackageName());
-        int btnPhoto = c.getResources().getIdentifier("btn_photo", "id", c.getPackageName());
-        int txtStation = c.getResources().getIdentifier("txt_station", "id", c.getPackageName());
 
-        if (btnVU != 0) v.setOnClickPendingIntent(btnVU, pi(c, A_VOL_UP));
-        if (btnVD != 0) v.setOnClickPendingIntent(btnVD, pi(c, A_VOL_DN));
+        int btnVU      = c.getResources().getIdentifier("btn_vol_up",   "id", c.getPackageName());
+        int btnVD      = c.getResources().getIdentifier("btn_vol_down", "id", c.getPackageName());
+        int btnPlay    = c.getResources().getIdentifier("btn_play",     "id", c.getPackageName());
+        int btnNext    = c.getResources().getIdentifier("btn_next",     "id", c.getPackageName());
+        int btnPrev    = c.getResources().getIdentifier("btn_prev",     "id", c.getPackageName());
+        int btnFx      = c.getResources().getIdentifier("btn_fx",       "id", c.getPackageName());
+        int btnPhoto   = c.getResources().getIdentifier("btn_photo",    "id", c.getPackageName());
+        int txtStation = c.getResources().getIdentifier("txt_station",  "id", c.getPackageName());
+
+        if (btnVU   != 0) v.setOnClickPendingIntent(btnVU,   pi(c, A_VOL_UP));
+        if (btnVD   != 0) v.setOnClickPendingIntent(btnVD,   pi(c, A_VOL_DN));
         if (btnPlay != 0) v.setOnClickPendingIntent(btnPlay, pi(c, A_PLAY));
         if (btnNext != 0) v.setOnClickPendingIntent(btnNext, pi(c, A_NEXT));
         if (btnPrev != 0) v.setOnClickPendingIntent(btnPrev, pi(c, A_PREV));
-        if (btnFx != 0) v.setOnClickPendingIntent(btnFx, pi(c, A_FX));
-        if (btnPhoto != 0) v.setOnClickPendingIntent(btnPhoto, pi(c, A_PHOTO));
+        if (btnFx   != 0) v.setOnClickPendingIntent(btnFx,   pi(c, A_FX));
+        if (btnPhoto!= 0) v.setOnClickPendingIntent(btnPhoto,pi(c, A_PHOTO));
 
         SharedPreferences sp = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        String station = sp.getString("station_name", "Rare Shot Radio");
-        if (txtStation != 0) v.setTextViewText(txtStation, station);
+        String stationName = sp.getString("station_name", "Relax Sound Radio");
+        if (txtStation != 0) v.setTextViewText(txtStation, stationName);
 
         m.updateAppWidget(id, v);
     }
@@ -70,21 +82,44 @@ public class MusicWidgetProvider extends AppWidgetProvider {
 
         switch (a) {
             case A_VOL_UP:
-                if (am != null) am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+                if (am != null) am.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
                 break;
             case A_VOL_DN:
-                if (am != null) am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+                if (am != null) am.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
                 break;
+
+            case A_PLAY: {
+                // TOGGLE play/pause via AudioService
+                Intent svc = new Intent(c, AudioService.class);
+                svc.setAction("TOGGLE");
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    c.startForegroundService(svc);
+                } else {
+                    c.startService(svc);
+                }
+                break;
+            }
             case A_NEXT: {
-                int idx = sp.getInt("station_index", 0) + 1;
-                if (idx > 9) idx = 0;
-                sp.edit().putInt("station_index", idx).putBoolean("station_changed", true).apply();
+                // Send NEXT intent to AudioService — it will update station and start playing
+                Intent svc = new Intent(c, AudioService.class);
+                svc.setAction("NEXT");
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    c.startForegroundService(svc);
+                } else {
+                    c.startService(svc);
+                }
                 break;
             }
             case A_PREV: {
-                int idx = sp.getInt("station_index", 0) - 1;
-                if (idx < 0) idx = 9;
-                sp.edit().putInt("station_index", idx).putBoolean("station_changed", true).apply();
+                Intent svc = new Intent(c, AudioService.class);
+                svc.setAction("PREV");
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    c.startForegroundService(svc);
+                } else {
+                    c.startService(svc);
+                }
                 break;
             }
             case A_FX: {
@@ -97,19 +132,31 @@ public class MusicWidgetProvider extends AppWidgetProvider {
                 break;
             }
             case A_PHOTO: {
-                sp.edit().putBoolean("next_wallpaper", true).apply();
+                // Trigger next wallpaper in LiveWallpaperService via shared prefs
+                int idx = sp.getInt("wallpaper_index", 0);
+                try {
+                    org.json.JSONArray uris = new org.json.JSONArray(sp.getString("wallpaper_uris", "[]"));
+                    if (uris.length() > 0) {
+                        idx = (idx + 1) % uris.length();
+                        sp.edit().putInt("wallpaper_index", idx)
+                            .putString("wallpaper_uri", uris.getString(idx)).apply();
+                    }
+                } catch (Exception e) {}
                 break;
             }
         }
-        AppWidgetManager m = AppWidgetManager.getInstance(c);
-        int[] ids = m.getAppWidgetIds(new ComponentName(c, MusicWidgetProvider.class));
-        for (int id : ids) update(c, m, id);
+
+        // Refresh widget UI after any action
+        AppWidgetManager wm = AppWidgetManager.getInstance(c);
+        int[] ids = wm.getAppWidgetIds(new ComponentName(c, MusicWidgetProvider.class));
+        for (int id : ids) update(c, wm, id);
     }
 
     static PendingIntent pi(Context c, String a) {
         Intent i = new Intent(c, MusicWidgetProvider.class);
         i.setAction(a);
-        return PendingIntent.getBroadcast(c, a.hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        return PendingIntent.getBroadcast(c, a.hashCode(), i,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }
 `;
@@ -139,7 +186,7 @@ const WIDGET_LAYOUT_XML = `<?xml version="1.0" encoding="utf-8"?>
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Rare Shot Radio"
+            android:text="Relax Sound Radio"
             android:textColor="#4ade80"
             android:textSize="13sp"
             android:textStyle="bold"
@@ -169,7 +216,7 @@ const WIDGET_LAYOUT_XML = `<?xml version="1.0" encoding="utf-8"?>
             android:layout_width="42dp"
             android:layout_height="42dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Play"
+            android:contentDescription="Play/Pause"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_media_play" />
 
@@ -242,7 +289,11 @@ const withAppWidget = (config) => {
     app.receiver = app.receiver || [];
     if (!app.receiver.some(r => r.$?.['android:name'] === '.MusicWidgetProvider')) {
       app.receiver.push({
-        $: { 'android:name': '.MusicWidgetProvider', 'android:exported': 'true', 'android:label': 'Rare Shot Control' },
+        $: {
+          'android:name': '.MusicWidgetProvider',
+          'android:exported': 'true',
+          'android:label': 'Relax Sound Control',
+        },
         'intent-filter': [{ action: [{ $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } }] }],
         'meta-data': [{ $: { 'android:name': 'android.appwidget.provider', 'android:resource': '@xml/widget_music_info' } }],
       });
