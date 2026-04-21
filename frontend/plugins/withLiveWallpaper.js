@@ -51,7 +51,9 @@ public class AudioService extends Service {
     private MediaPlayer player;
     private String radioUrl;
     private boolean isPlaying;
+    private boolean wasPlayingBeforeScreenOff;
     private SharedPreferences sp;
+    private android.content.BroadcastReceiver screenReceiver;
 
     @Override
     public void onCreate() {
@@ -59,6 +61,28 @@ public class AudioService extends Service {
         createChannel();
         sp = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         radioUrl = sp.getString("radio_url", null);
+
+        // Register screen on/off receiver — pause radio when screen turns off
+        screenReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context ctx, Intent i) {
+                if (android.content.Intent.ACTION_SCREEN_OFF.equals(i.getAction())) {
+                    wasPlayingBeforeScreenOff = isPlaying;
+                    if (isPlaying) { stopPlayback(); }
+                } else if (android.content.Intent.ACTION_SCREEN_ON.equals(i.getAction())) {
+                    // Do NOT auto-resume — user must explicitly press play
+                }
+                // Also handle audio focus changes via ACTION_AUDIO_BECOMING_NOISY
+                if (android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(i.getAction())) {
+                    if (isPlaying) stopPlayback();
+                }
+            }
+        };
+        android.content.IntentFilter filter = new android.content.IntentFilter();
+        filter.addAction(android.content.Intent.ACTION_SCREEN_OFF);
+        filter.addAction(android.content.Intent.ACTION_SCREEN_ON);
+        filter.addAction(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+        registerReceiver(screenReceiver, filter);
     }
 
     @Override
@@ -104,7 +128,9 @@ public class AudioService extends Service {
                 startPlayback();
             } else if ("SET_VOLUME".equals(action)) {
                 float vol = intent.getFloatExtra("volume", 0.8f);
+                sp.edit().putFloat("app_volume", vol).apply();
                 if (player != null) {
+                    // Set volume ONLY on this MediaPlayer — does NOT affect system volume
                     try { player.setVolume(vol, vol); } catch (Exception e) {}
                 }
             }
@@ -122,7 +148,9 @@ public class AudioService extends Service {
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .setUsage(AudioAttributes.USAGE_MEDIA).build());
             player.setDataSource(radioUrl);
+            float vol = sp.getFloat("app_volume", 0.8f);
             player.setOnPreparedListener(mp -> {
+                mp.setVolume(vol, vol);  // Apply saved app volume
                 mp.start(); isPlaying = true; updateNotif();
             });
             player.setOnErrorListener((mp, w, e) -> {
@@ -204,6 +232,9 @@ public class AudioService extends Service {
     @Override
     public void onDestroy() {
         stopPlayback();
+        if (screenReceiver != null) {
+            try { unregisterReceiver(screenReceiver); } catch (Exception e) {}
+        }
         super.onDestroy();
     }
 

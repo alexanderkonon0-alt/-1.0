@@ -9,7 +9,7 @@ import { RADIO_STATIONS, RadioStation } from '../constants/radioStations';
 import { Language } from '../constants/translations';
 import {
   nativeSetEffect, nativeSetWallpaper, nativeNextWallpaper, nativePrevWallpaper,
-  nativeSetVolume, nativeStartAudioService, nativeStopAudioService,
+  setAutoChange as nativeSetAutoChange, setWallpaperUris as nativeSyncUris,
   isWallpaperModuleAvailable,
 } from '../modules/wallpaper';
 
@@ -25,7 +25,6 @@ export interface WallpaperItem {
 }
 
 interface AppContextValue {
-  // Wallpapers
   wallpapers: WallpaperItem[];
   addWallpaper: (item: WallpaperItem) => Promise<void>;
   removeWallpaper: (id: string) => Promise<void>;
@@ -37,14 +36,12 @@ interface AppContextValue {
   setAutoChangeInterval: (v: number) => void;
   nextWallpaper: () => void;
   prevWallpaper: () => void;
-  // Effects
   activeEffect: EffectType;
   setActiveEffect: (e: EffectType) => void;
   effectIntensity: IntensityLevel;
   setEffectIntensity: (v: IntensityLevel) => void;
   effectSpeed: SpeedLevel;
   setEffectSpeed: (v: SpeedLevel) => void;
-  // Audio / Radio
   currentStation: RadioStation | null;
   setCurrentStation: (s: RadioStation) => void;
   isPlaying: boolean;
@@ -53,10 +50,8 @@ interface AppContextValue {
   prevStation: () => void;
   volume: number;
   setVolume: (v: number) => void;
-  // Language
   language: Language;
   setLanguage: (l: Language) => void;
-  // Widget UI state
   isWidgetCollapsed: boolean;
   setIsWidgetCollapsed: (v: boolean) => void;
 }
@@ -93,7 +88,6 @@ async function load<T>(key: string, fallback: T): Promise<T> {
   return fallback;
 }
 
-/** Detect Android device language from expo-localization */
 function getDeviceLanguage(): Language {
   const supported: Language[] = ['en', 'ru', 'de', 'fr', 'es', 'zh', 'ja', 'ko', 'pt', 'it', 'tr', 'ar'];
   try {
@@ -106,8 +100,15 @@ function getDeviceLanguage(): Language {
   return 'en';
 }
 
+/** Sync wallpaper URI list to native SharedPreferences so LiveWallpaperService can access them */
+function syncWallpapersToNative(items: WallpaperItem[]) {
+  try {
+    const uris = items.map(w => w.uri);
+    nativeSyncUris(uris).catch(() => {});
+  } catch {}
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  // Wallpaper state
   const [wallpapers, setWallpapers] = useState<WallpaperItem[]>([]);
   const [currentWallpaper, setCurrentWallpaperState] = useState<WallpaperItem | null>(null);
   const [autoChange, setAutoChangeState] = useState(false);
@@ -115,12 +116,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const wallpaperIndexRef = useRef(0);
   const autoChangeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Effects state
   const [activeEffect, setActiveEffectState] = useState<EffectType>('none');
   const [effectIntensity, setEffectIntensityState] = useState<IntensityLevel>(2);
   const [effectSpeed, setEffectSpeedState] = useState<SpeedLevel>(2);
 
-  // Audio state
   const [currentStation, setCurrentStationState] = useState<RadioStation | null>(RADIO_STATIONS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolumeState] = useState(0.8);
@@ -131,16 +130,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const isPlayingRef = useRef(false);
   const wasPlayingBeforeBackground = useRef(false);
-  const loadCounterRef = useRef(0);         // prevents race conditions
+  const loadCounterRef = useRef(0);
   const volumeRef = useRef(0.8);
   const currentStationRef = useRef<RadioStation | null>(RADIO_STATIONS[0]);
   const currentStationIndexRef = useRef(0);
 
-  // ─── Setters ────────────────────────────────────────────────────────────────
+  // ── Setters ──────────────────────────────────────────────────────────────────
 
   const setLanguage = useCallback((l: Language) => {
-    setLanguageState(l);
-    save(STORAGE_KEYS.language, l);
+    setLanguageState(l); save(STORAGE_KEYS.language, l);
   }, []);
 
   const setIsWidgetCollapsed = useCallback((v: boolean) => {
@@ -148,20 +146,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setActiveEffect = useCallback((e: EffectType) => {
-    setActiveEffectState(e);
-    save(STORAGE_KEYS.effect, e);
+    setActiveEffectState(e); save(STORAGE_KEYS.effect, e);
     try { nativeSetEffect(e, effectIntensity, effectSpeed); } catch {}
   }, [effectIntensity, effectSpeed]);
 
   const setEffectIntensity = useCallback((v: IntensityLevel) => {
-    setEffectIntensityState(v);
-    save(STORAGE_KEYS.intensity, v);
+    setEffectIntensityState(v); save(STORAGE_KEYS.intensity, v);
     try { nativeSetEffect(activeEffect, v, effectSpeed); } catch {}
   }, [activeEffect, effectSpeed]);
 
   const setEffectSpeed = useCallback((v: SpeedLevel) => {
-    setEffectSpeedState(v);
-    save(STORAGE_KEYS.speed, v);
+    setEffectSpeedState(v); save(STORAGE_KEYS.speed, v);
     try { nativeSetEffect(activeEffect, effectIntensity, v); } catch {}
   }, [activeEffect, effectIntensity]);
 
@@ -170,15 +165,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setVolumeState(clamped);
     volumeRef.current = clamped;
     save(STORAGE_KEYS.volume, clamped);
-    // Update currently playing sound
     if (soundRef.current) {
       soundRef.current.setVolumeAsync(clamped).catch(() => {});
     }
-    // Also update native audio service
-    try { nativeSetVolume(clamped); } catch {}
   }, []);
 
-  // ─── Audio engine ────────────────────────────────────────────────────────────
+  // ── Audio engine ─────────────────────────────────────────────────────────────
 
   const stopCurrentSound = useCallback(async () => {
     const sound = soundRef.current;
@@ -194,7 +186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const playStationInternal = useCallback(async (station: RadioStation) => {
     const myId = ++loadCounterRef.current;
 
-    // Stop previous sound first
+    // Stop previous sound
     const prevSound = soundRef.current;
     soundRef.current = null;
     setIsPlaying(false);
@@ -205,16 +197,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try { await prevSound.unloadAsync(); } catch {}
     }
 
-    // Guard: if another call came in while we were stopping, abort
     if (myId !== loadCounterRef.current) return;
     if (!station?.url) return;
 
     try {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
-        staysActiveInBackground: false,   // pause on background per user requirement
+        // NOTE: staysActiveInBackground: false ensures audio PAUSES when app is backgrounded
+        // This is the user's requirement: pause when screen off / leaving app
+        staysActiveInBackground: false,
         playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
+        // shouldDuckAndroid: false → our audio STOPS (not just ducks) when another app plays
+        shouldDuckAndroid: false,
         playThroughEarpieceAndroid: false,
       });
 
@@ -224,11 +218,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           shouldPlay: true,
           volume: volumeRef.current,
           isLooping: false,
-          progressUpdateIntervalMillis: 500,
+          progressUpdateIntervalMillis: 1000,
         }
       );
 
-      // Guard again after async create
       if (myId !== loadCounterRef.current) {
         try { await sound.unloadAsync(); } catch {}
         return;
@@ -240,17 +233,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
         if (!status.isLoaded) return;
-        if (status.isPlaying !== isPlayingRef.current && soundRef.current === sound) {
-          // Sync ref with actual playback state
-          isPlayingRef.current = status.isPlaying;
-          setIsPlaying(status.isPlaying);
+        // Detect audio focus loss (another app started playing, or screen lock interrupted)
+        if (!status.isPlaying && !status.isBuffering && soundRef.current === sound) {
+          if (isPlayingRef.current) {
+            // Audio was interrupted unexpectedly — update state
+            isPlayingRef.current = false;
+            setIsPlaying(false);
+          }
         }
       });
-
-      // Also try to start native audio service for background notification
-      try {
-        nativeStartAudioService(station.url, station.name);
-      } catch {}
 
     } catch (e) {
       if (myId === loadCounterRef.current) {
@@ -267,9 +258,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try { await soundRef.current.pauseAsync(); } catch {}
       setIsPlaying(false);
       isPlayingRef.current = false;
-      try { nativeStopAudioService(); } catch {}
     } else if (!isPlayingRef.current && soundRef.current) {
-      // Resume existing sound
       try {
         const status = await soundRef.current.getStatusAsync();
         if (status.isLoaded) {
@@ -277,14 +266,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setIsPlaying(true);
           isPlayingRef.current = true;
         } else {
-          // Sound died, restart
           await playStationInternal(currentStationRef.current);
         }
       } catch {
         await playStationInternal(currentStationRef.current);
       }
     } else {
-      // No sound at all, start fresh
       await playStationInternal(currentStationRef.current);
     }
   }, [playStationInternal]);
@@ -318,11 +305,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await playStationInternal(station);
   }, [playStationInternal]);
 
-  // ─── AppState handler (pause on background, resume on foreground) ───────────
+  // ── AppState handler: pause on background/inactive, resume on active ──────────
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (state: AppStateStatus) => {
       if (state === 'background' || state === 'inactive') {
+        // Save playing state BEFORE pausing
         wasPlayingBeforeBackground.current = isPlayingRef.current;
         if (soundRef.current && isPlayingRef.current) {
           try { await soundRef.current.pauseAsync(); } catch {}
@@ -330,9 +318,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           isPlayingRef.current = false;
         }
       } else if (state === 'active') {
+        // Restore playback if was playing before going to background
         if (wasPlayingBeforeBackground.current) {
           wasPlayingBeforeBackground.current = false;
           const sound = soundRef.current;
+          const station = currentStationRef.current;
           if (sound) {
             try {
               const status = await sound.getStatusAsync();
@@ -340,19 +330,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 await sound.playAsync();
                 setIsPlaying(true);
                 isPlayingRef.current = true;
-              } else {
-                // Sound died while in background — restart
-                const station = currentStationRef.current;
-                if (station) await playStationInternal(station);
+              } else if (station) {
+                await playStationInternal(station);
               }
             } catch {
-              const station = currentStationRef.current;
               if (station) await playStationInternal(station);
             }
-          } else {
-            // No sound ref — restart
-            const station = currentStationRef.current;
-            if (station) await playStationInternal(station);
+          } else if (station) {
+            await playStationInternal(station);
           }
         }
       }
@@ -360,7 +345,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [playStationInternal]);
 
-  // ─── Wallpaper helpers ───────────────────────────────────────────────────────
+  // ── Wallpaper helpers ─────────────────────────────────────────────────────────
 
   const setCurrentWallpaper = useCallback((item: WallpaperItem) => {
     setCurrentWallpaperState(item);
@@ -374,6 +359,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setWallpapers(prev => {
       const next = [...prev, item];
       save(STORAGE_KEYS.wallpapers, next);
+      // CRITICAL: Sync URI list to native so LiveWallpaperService can auto-change
+      syncWallpapersToNative(next);
       return next;
     });
   }, []);
@@ -382,6 +369,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setWallpapers(prev => {
       const next = prev.filter(w => w.id !== id);
       save(STORAGE_KEYS.wallpapers, next);
+      // Sync updated list to native
+      syncWallpapersToNative(next);
       return next;
     });
   }, []);
@@ -413,14 +402,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setAutoChange = useCallback((v: boolean) => {
     setAutoChangeState(v);
     save(STORAGE_KEYS.autoChange, v);
-  }, []);
+    // Sync to native LiveWallpaperService
+    try { nativeSetAutoChange(v, autoChangeInterval).catch(() => {}); } catch {}
+  }, [autoChangeInterval]);
 
   const setAutoChangeInterval = useCallback((v: number) => {
     setAutoChangeIntervalState(v);
     save(STORAGE_KEYS.autoChangeInterval, v);
-  }, []);
+    // Sync to native LiveWallpaperService
+    try { nativeSetAutoChange(autoChange, v).catch(() => {}); } catch {}
+  }, [autoChange]);
 
-  // Auto-change wallpaper timer
+  // Auto-change timer (in-app)
   useEffect(() => {
     if (autoChangeTimerRef.current) {
       clearInterval(autoChangeTimerRef.current);
@@ -434,12 +427,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [autoChange, autoChangeInterval, wallpapers.length, nextWallpaper]);
 
-  // Sync native effect whenever effect settings change
+  // Sync effect to native on change
   useEffect(() => {
     try { nativeSetEffect(activeEffect, effectIntensity, effectSpeed); } catch {}
   }, [activeEffect, effectIntensity, effectSpeed]);
 
-  // ─── Load persisted data on mount ───────────────────────────────────────────
+  // ── Load persisted data on mount ──────────────────────────────────────────────
 
   useEffect(() => {
     (async () => {
@@ -476,7 +469,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setVolumeState(clampedVol);
       volumeRef.current = clampedVol;
 
-      // Language: if no saved language, use device locale
       if (savedLanguage) {
         setLanguageState(savedLanguage);
       } else {
@@ -491,16 +483,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       currentStationRef.current = initialStation;
       setCurrentStationState(initialStation);
 
-      // Auto-start first station after a short delay
+      // Sync saved wallpapers to native on startup
+      if (savedWallpapers.length > 0) syncWallpapersToNative(savedWallpapers);
+      // Sync auto-change to native on startup
+      try { nativeSetAutoChange(savedAutoChange, savedInterval).catch(() => {}); } catch {}
+
       if (Platform.OS !== 'web') {
-        setTimeout(() => {
-          playStationInternal(initialStation);
-        }, 1500);
+        setTimeout(() => { playStationInternal(initialStation); }, 1500);
       }
     })();
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (soundRef.current) {
