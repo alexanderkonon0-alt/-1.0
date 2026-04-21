@@ -10,7 +10,7 @@
         "distribution": "internal"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://russian-translator-5.preview.emergentagent.com"
+        "EXPO_PUBLIC_BACKEND_URL": "https://sound-wallpaper-dev.preview.emergentagent.com"
       }
     },
     "production": {
@@ -18,7 +18,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://russian-translator-5.preview.emergentagent.com"
+        "EXPO_PUBLIC_BACKEND_URL": "https://sound-wallpaper-dev.preview.emergentagent.com"
       }
     }
   },
